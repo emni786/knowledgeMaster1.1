@@ -241,7 +241,7 @@ function LibraryPage() {
           onSignOut={handleSignOut}
         />
 
-        <div className={`hidden lg:grid ${collapsed ? "lg:grid-cols-[64px_1fr_420px]" : "lg:grid-cols-[280px_1fr_420px]"} min-h-screen transition-[grid-template-columns]`}>
+        <div className={`hidden lg:grid ${collapsed ? "lg:grid-cols-[64px_1fr]" : "lg:grid-cols-[280px_1fr]"} min-h-screen transition-[grid-template-columns]`}>
           {/* Left sidebar */}
           <aside className="border-r border-border/50 bg-sidebar text-sidebar-foreground flex flex-col h-screen sticky top-0">
             <div className="flex items-center justify-between p-4 border-b border-border/50">
