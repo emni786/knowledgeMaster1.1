@@ -813,6 +813,7 @@ function LinkCard({
 
   return (
     <div
+      ref={ref as React.RefObject<HTMLDivElement>}
       onClick={selectMode ? onCheck : onSelect}
       role="button"
       tabIndex={0}
