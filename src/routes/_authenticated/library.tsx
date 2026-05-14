@@ -241,7 +241,7 @@ function LibraryPage() {
           onSignOut={handleSignOut}
         />
 
-        <div className={`hidden lg:grid ${collapsed ? "lg:grid-cols-[64px_1fr_420px]" : "lg:grid-cols-[280px_1fr_420px]"} min-h-screen transition-[grid-template-columns]`}>
+        <div className={`hidden lg:grid ${collapsed ? "lg:grid-cols-[64px_1fr]" : "lg:grid-cols-[280px_1fr]"} min-h-screen transition-[grid-template-columns]`}>
           {/* Left sidebar */}
           <aside className="border-r border-border/50 bg-sidebar text-sidebar-foreground flex flex-col h-screen sticky top-0">
             <div className="flex items-center justify-between p-4 border-b border-border/50">
@@ -425,29 +425,6 @@ function LibraryPage() {
             </div>
           </main>
 
-          {/* Right detail panel */}
-          <aside className="border-l border-border/50 bg-card/30 h-screen sticky top-0 overflow-y-auto scrollbar-thin">
-            {selectedLink ? (
-              <DetailPanel
-                link={selectedLink}
-                onClose={() => setSelected(null)}
-                onDelete={(id) => deleteMut.mutate(id)}
-                onPin={(id, p) => pinMut.mutate({ id, pinned: !p })}
-                onRetry={(id) => retryAnalysis(id).then(() => qc.invalidateQueries({ queryKey: ["links"] }))}
-                onUpdate={async (id, patch) => {
-                  await updateLink(id, patch);
-                  qc.invalidateQueries({ queryKey: ["links"] });
-                }}
-                allLinks={allLinks}
-              />
-            ) : (
-              <div className="h-full flex items-center justify-center p-10 text-center">
-                <p className="text-xs text-muted-foreground/60 font-mono tracking-wide">
-                  Select a link to view details
-                </p>
-              </div>
-            )}
-          </aside>
         </div>
 
         {/* Mobile body */}
