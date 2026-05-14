@@ -53,7 +53,7 @@ const NAV = [
   { to: "/library", label: "Library", icon: LibraryIcon },
   { to: "/dashboard", label: "Dashboard", icon: Activity },
   { to: "/discover", label: "Discover", icon: Compass },
-  { to: "/knowledge", label: "Knowledge", icon: Network },
+  
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/digest", label: "Digest", icon: Newspaper },
   { to: "/settings", label: "Settings", icon: Settings },
