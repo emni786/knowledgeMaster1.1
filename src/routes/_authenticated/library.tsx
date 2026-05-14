@@ -158,6 +158,10 @@ function LibraryPage() {
       seen.set(k, (seen.get(k) ?? 0) + 1);
     });
     const duplicates = Array.from(seen.values()).filter((n) => n > 1).length;
+    const byType: Record<ContentType, number> = {
+      article: 0, video: 0, repo: 0, docs: 0, tool: 0, thread: 0, other: 0,
+    };
+    active.forEach((l) => { byType[l.content_type] = (byType[l.content_type] ?? 0) + 1; });
     return {
       all: active.length,
       pending: active.filter((l) => l.status === "pending").length,
@@ -165,6 +169,7 @@ function LibraryPage() {
       failed: active.filter((l) => l.status === "failed").length,
       duplicates,
       deleted: allLinks.filter((l) => l.deleted_at).length,
+      byType,
     };
   }, [allLinks]);
 
