@@ -110,10 +110,11 @@ export const Route = createFileRoute("/api/public/telegram/webhook/$botId")({
         const urls = Array.from(new Set([...extractUrls(text), ...entityUrls]));
 
         const chatId = msg.chat?.id;
+        const botToken = bot.bot_token;
 
         async function reply(textBody: string) {
           if (!chatId) return;
-          await fetch(`${TG_API}/bot${bot.bot_token}/sendMessage`, {
+          await fetch(`${TG_API}/bot${botToken}/sendMessage`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ chat_id: chatId, text: textBody, disable_web_page_preview: true }),
