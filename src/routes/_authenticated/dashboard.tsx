@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchLinks } from "@/lib/api/links";
 import { AppShell } from "@/components/AppShell";
@@ -75,8 +75,16 @@ function DashboardPage() {
       }));
   }, [links]);
 
-  // Realtime
-  useMemoSubscribe();
+  const qc = useQueryClient();
+  useEffect(() => {
+    const channel = supabase
+      .channel("dashboard-links")
+      .on("postgres_changes", { event: "*", schema: "public", table: "links" }, () => {
+        qc.invalidateQueries({ queryKey: ["links"] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [qc]);
 
   return (
     <AppShell
@@ -159,31 +167,3 @@ function Header({ icon: Icon, title, subtitle }: { icon: typeof Activity; title:
   );
 }
 
-function useMemoSubscribe() {
-  // realtime invalidate for live updates
-  useMemoSubscribeImpl();
-}
-function useMemoSubscribeImpl() {
-  // separate to keep hook count stable
-  const qc = (window as unknown as { __qc?: never }) ? null : null;
-  void qc;
-  // attach via effect
-  useEffectOnce(() => {
-    const channel = supabase
-      .channel("dashboard-links")
-      .on("postgres_changes", { event: "*", schema: "public", table: "links" }, () => {
-        // soft refresh handled by react-query refetchOnWindowFocus; force via query invalidation isn't trivial here.
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  });
-}
-
-import { useEffect } from "react";
-function useEffectOnce(fn: () => void | (() => void)) {
-  useEffect(() => {
-    const cleanup = fn();
-    return cleanup;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-}
