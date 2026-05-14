@@ -7,7 +7,7 @@ import { faviconFor, getDomain } from "@/lib/url";
 // react-force-graph-3d uses WebGL — lazy-load to keep it out of SSR
 const ForceGraph3D = lazy(() =>
   import("react-force-graph-3d").then((m) => ({ default: m.default as any }))
-);
+) as any;
 
 type GNode = {
   id: string;
