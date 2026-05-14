@@ -17,8 +17,8 @@ import {
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
     meta: [
-      { title: "Settings — Xenonowledge" },
-      { name: "description", content: "Manage your Xenonowledge account, integrations, and preferences." },
+      { title: "Settings — Knowledgemaster" },
+      { name: "description", content: "Manage your Knowledgemaster account, integrations, and preferences." },
     ],
   }),
   component: Page,
@@ -36,7 +36,7 @@ function Page() {
       <main className="mx-auto max-w-3xl space-y-10 px-6 py-10">
         <section>
           <h2 className="font-display text-3xl font-semibold">Settings</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Manage your Xenonowledge account, integrations, and preferences.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Manage your Knowledgemaster account, integrations, and preferences.</p>
         </section>
         <TelegramBots />
       </main>
@@ -103,7 +103,7 @@ function TelegramBots() {
         <div className="flex-1">
           <h3 className="font-display text-lg font-semibold">Telegram bot</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Paste any link to your own Telegram bot and Xenonowledge will analyze it (title, summary) and save it
+            Paste any link to your own Telegram bot and Knowledgemaster will analyze it (title, summary) and save it
             to your library. Create a bot with{" "}
             <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
               @BotFather <ExternalLink className="h-3 w-3" />

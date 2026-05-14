@@ -122,7 +122,7 @@ export const Route = createFileRoute("/api/public/telegram/webhook/$botId")({
         }
 
         if (!urls.length) {
-          await reply("Send me a link and I'll save it to your Xenonowledge library.");
+          await reply("Send me a link and I'll save it to your Knowledgemaster library.");
           return Response.json({ ok: true });
         }
 
