@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, Bot, Loader2, Trash2, ExternalLink, Copy, Check } from "lucide-react";
+import { ArrowLeft, Bot, Loader2, Trash2, ExternalLink, Copy, Check, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import {
   addTelegramBot,
   deleteTelegramBot,
   listTelegramBots,
+  testTelegramWebhook,
 } from "@/lib/telegram.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
