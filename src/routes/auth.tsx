@@ -1,6 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,6 +62,17 @@ function AuthPage() {
     toast.success("Reset link sent");
   };
 
+  const signInWithGoogle = async () => {
+    setLoading(true);
+    const result = await lovable.auth.signInWithOAuth("google", {
+      redirect_uri: `${window.location.origin}/library`,
+    });
+    if (result.redirected) return;
+    setLoading(false);
+    if (result.error) return toast.error(result.error.message);
+    window.location.href = "/library";
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-background via-background to-accent/30">
       <div className="w-full max-w-sm animate-scale-in">
@@ -72,7 +84,24 @@ function AuthPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
+        <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm space-y-4">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading}
+            onClick={signInWithGoogle}
+            className="w-full font-mono text-xs"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.4-1.7 4.1-5.5 4.1-3.3 0-6-2.74-6-6.1s2.7-6.1 6-6.1c1.88 0 3.14.8 3.86 1.49l2.63-2.53C16.86 3.43 14.66 2.5 12 2.5 6.97 2.5 2.9 6.57 2.9 11.6S6.97 20.7 12 20.7c6.93 0 9.1-4.86 9.1-7.4 0-.5-.06-.88-.13-1.1H12z"/>
+            </svg>
+            Continue with Google
+          </Button>
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">or</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
           <Tabs defaultValue="signin">
             <TabsList className="grid w-full grid-cols-2 font-mono text-xs">
               <TabsTrigger value="signin">Sign in</TabsTrigger>
