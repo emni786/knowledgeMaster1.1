@@ -781,6 +781,7 @@ function LinkCard({
   if (view === "grid") {
     return (
       <button
+        ref={ref as React.RefObject<HTMLButtonElement>}
         onClick={selectMode ? onCheck : onSelect}
         aria-pressed={selected}
         data-selected={selected ? "true" : undefined}
