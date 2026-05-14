@@ -62,6 +62,17 @@ function AuthPage() {
     toast.success("Reset link sent");
   };
 
+  const signInWithGoogle = async () => {
+    setLoading(true);
+    const result = await lovable.auth.signInWithOAuth("google", {
+      redirect_uri: `${window.location.origin}/library`,
+    });
+    if (result.redirected) return;
+    setLoading(false);
+    if (result.error) return toast.error(result.error.message);
+    window.location.href = "/library";
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-background via-background to-accent/30">
       <div className="w-full max-w-sm animate-scale-in">
