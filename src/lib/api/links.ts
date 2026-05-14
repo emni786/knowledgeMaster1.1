@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { LinkRow, ContentType, LinkStatus } from "@/lib/types";
-import { getDomain, normalizeUrl, detectContentType } from "@/lib/url";
+import type { LinkRow } from "@/lib/types";
+import { analyzeAndSaveLinks, reanalyzeLink } from "@/lib/links.functions";
 
 export async function fetchLinks(): Promise<LinkRow[]> {
   const { data, error } = await supabase
