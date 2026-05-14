@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, Bot, Loader2, Trash2, ExternalLink, Copy, Check } from "lucide-react";
+import { ArrowLeft, Bot, Loader2, Trash2, ExternalLink, Copy, Check, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import {
   addTelegramBot,
   deleteTelegramBot,
   listTelegramBots,
+  testTelegramWebhook,
 } from "@/lib/telegram.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -48,6 +49,7 @@ function TelegramBots() {
   const list = useServerFn(listTelegramBots);
   const add = useServerFn(addTelegramBot);
   const remove = useServerFn(deleteTelegramBot);
+  const test = useServerFn(testTelegramWebhook);
   const [token, setToken] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -70,6 +72,21 @@ function TelegramBots() {
     mutationFn: (id: string) => remove({ data: { id } }),
     onSuccess: () => {
       toast.success("Bot disconnected");
+      qc.invalidateQueries({ queryKey: ["telegram-bots"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const testMut = useMutation({
+    mutationFn: (id: string) => test({ data: { id } }),
+    onSuccess: (res) => {
+      if (res.repaired) {
+        toast.success("Webhook URL was wrong — re-registered with Telegram.");
+      } else if (res.lastErrorMessage) {
+        toast.warning(`Webhook OK, but Telegram reports: ${res.lastErrorMessage}`);
+      } else {
+        toast.success(`Webhook OK · ${res.pendingUpdates} pending update${res.pendingUpdates === 1 ? "" : "s"}.`);
+      }
       qc.invalidateQueries({ queryKey: ["telegram-bots"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -177,6 +194,20 @@ function TelegramBots() {
                         {copied === b.id ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
                       </Button>
                     )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={testMut.isPending && testMut.variables === b.id}
+                      onClick={() => testMut.mutate(b.id)}
+                      title="Test webhook"
+                    >
+                      {testMut.isPending && testMut.variables === b.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Activity className="h-4 w-4" />
+                      )}
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
