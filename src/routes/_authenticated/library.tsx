@@ -105,6 +105,23 @@ function LibraryPage() {
     return () => { supabase.removeChannel(channel); };
   }, [qc]);
 
+  // Track status transitions (pending → ready / failed) for inline feedback
+  const prevStatusRef = useRef<Map<string, LinkStatus>>(new Map());
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    const next = new Map<string, LinkStatus>();
+    for (const l of allLinks) {
+      next.set(l.id, l.status);
+      const before = prev.get(l.id);
+      if (before === "pending" && l.status === "ready") {
+        toast.success(`Analyzed: ${l.title || l.domain || l.url}`);
+      } else if (before === "pending" && l.status === "failed") {
+        toast.error(`Analysis failed: ${l.domain || l.url}`);
+      }
+    }
+    prevStatusRef.current = next;
+  }, [allLinks]);
+
   const stats = useMemo(() => {
     const active = allLinks.filter((l) => !l.deleted_at);
     const seen = new Map<string, number>();
