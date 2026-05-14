@@ -771,6 +771,12 @@ function LinkCard({
   const Icon = TYPE_ICON[link.content_type];
   const domain = link.domain || getDomain(link.url);
   const ago = link.created_at ? formatDistanceToNow(new Date(link.created_at), { addSuffix: true }) : "";
+  const ref = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (selected && ref.current) {
+      ref.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [selected]);
 
   if (view === "grid") {
     return (
