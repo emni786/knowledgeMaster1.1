@@ -891,8 +891,11 @@ function LinkCard({
             ))
           )}
         </div>
+        {link.summary && link.status === "ready" && (
+          <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{link.summary}</p>
+        )}
       </div>
-      <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+      <Icon className="h-4 w-4 text-primary/70 shrink-0" />
       <button
         onClick={(e) => { e.stopPropagation(); onPin(link.pinned); }}
         className="opacity-0 group-hover:opacity-100 transition text-muted-foreground hover:text-primary"
