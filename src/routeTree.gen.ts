@@ -15,7 +15,6 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated/library'
-import { Route as AuthenticatedKnowledgeRouteImport } from './routes/_authenticated/knowledge'
 import { Route as AuthenticatedDiscoverRouteImport } from './routes/_authenticated/discover'
 import { Route as AuthenticatedDigestRouteImport } from './routes/_authenticated/digest'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
@@ -49,11 +48,6 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
 const AuthenticatedLibraryRoute = AuthenticatedLibraryRouteImport.update({
   id: '/library',
   path: '/library',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedKnowledgeRoute = AuthenticatedKnowledgeRouteImport.update({
-  id: '/knowledge',
-  path: '/knowledge',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedDiscoverRoute = AuthenticatedDiscoverRouteImport.update({
@@ -91,7 +85,6 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/digest': typeof AuthenticatedDigestRoute
   '/discover': typeof AuthenticatedDiscoverRoute
-  '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/api/public/telegram/webhook/$botId': typeof ApiPublicTelegramWebhookBotIdRoute
@@ -104,7 +97,6 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/digest': typeof AuthenticatedDigestRoute
   '/discover': typeof AuthenticatedDiscoverRoute
-  '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/api/public/telegram/webhook/$botId': typeof ApiPublicTelegramWebhookBotIdRoute
@@ -119,7 +111,6 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/digest': typeof AuthenticatedDigestRoute
   '/_authenticated/discover': typeof AuthenticatedDiscoverRoute
-  '/_authenticated/knowledge': typeof AuthenticatedKnowledgeRoute
   '/_authenticated/library': typeof AuthenticatedLibraryRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/api/public/telegram/webhook/$botId': typeof ApiPublicTelegramWebhookBotIdRoute
@@ -134,7 +125,6 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/digest'
     | '/discover'
-    | '/knowledge'
     | '/library'
     | '/settings'
     | '/api/public/telegram/webhook/$botId'
@@ -147,7 +137,6 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/digest'
     | '/discover'
-    | '/knowledge'
     | '/library'
     | '/settings'
     | '/api/public/telegram/webhook/$botId'
@@ -161,7 +150,6 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/digest'
     | '/_authenticated/discover'
-    | '/_authenticated/knowledge'
     | '/_authenticated/library'
     | '/_authenticated/settings'
     | '/api/public/telegram/webhook/$botId'
@@ -219,13 +207,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLibraryRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/knowledge': {
-      id: '/_authenticated/knowledge'
-      path: '/knowledge'
-      fullPath: '/knowledge'
-      preLoaderRoute: typeof AuthenticatedKnowledgeRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/discover': {
       id: '/_authenticated/discover'
       path: '/discover'
@@ -269,7 +250,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDigestRoute: typeof AuthenticatedDigestRoute
   AuthenticatedDiscoverRoute: typeof AuthenticatedDiscoverRoute
-  AuthenticatedKnowledgeRoute: typeof AuthenticatedKnowledgeRoute
   AuthenticatedLibraryRoute: typeof AuthenticatedLibraryRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
 }
@@ -279,7 +259,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDigestRoute: AuthenticatedDigestRoute,
   AuthenticatedDiscoverRoute: AuthenticatedDiscoverRoute,
-  AuthenticatedKnowledgeRoute: AuthenticatedKnowledgeRoute,
   AuthenticatedLibraryRoute: AuthenticatedLibraryRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
 }
@@ -298,3 +277,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
