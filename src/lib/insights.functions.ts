@@ -131,3 +131,92 @@ export const getDigest = createServerFn({ method: "POST" })
     const digest = DigestSchema.parse(parsed);
     return { digest, count: links.length, window: data.window, links };
   });
+
+const TopicAssignments = z.object({
+  assignments: z.array(
+    z.object({
+      id: z.string(),
+      topics: z.array(z.string().min(2).max(40)).min(1).max(6),
+    })
+  ),
+});
+
+export const analyzeTopics = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ force: z.boolean().default(false) }).parse(input ?? {})
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+
+    let q = supabase
+      .from("links")
+      .select("id, title, summary, url, domain, content_type, tags")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (!data.force) q = q.or("tags.is.null,tags.eq.{}");
+
+    const { data: rows, error } = await q;
+    if (error) throw new Error(error.message);
+
+    const links = (rows ?? []) as Array<{
+      id: string; title: string | null; summary: string | null;
+      url: string; domain: string | null; content_type: string;
+      tags: string[] | null;
+    }>;
+
+    if (!links.length) {
+      return { analyzed: 0, updated: 0, message: "All links already have topics. Use 'Re-analyze all' to refresh." };
+    }
+
+    const system =
+      "You extract concise topical tags from saved web links to power a knowledge graph. " +
+      'Reply ONLY with strict JSON: {"assignments":[{"id":"<linkId>","topics":["topic-one","topic-two"]}]}. ' +
+      "Each link gets 3-6 short kebab-case topics (lowercase, hyphens, no '#'). " +
+      "Prefer reusable, conceptual topics (e.g. 'machine-learning', 'startup-funding', 'rust-lang') over one-off names. " +
+      "Topics should be SHARED across related links so a graph can connect them.";
+
+    const updated: string[] = [];
+    const BATCH = 25;
+    for (let i = 0; i < links.length; i += BATCH) {
+      const batch = links.slice(i, i + BATCH);
+      const compact = batch.map((l) => ({
+        id: l.id,
+        title: l.title?.slice(0, 160) ?? l.url,
+        domain: l.domain,
+        type: l.content_type,
+        summary: l.summary?.slice(0, 240) ?? "",
+      }));
+      const raw = await callAI(system, `Links: ${JSON.stringify(compact)}`);
+      let parsed: z.infer<typeof TopicAssignments>;
+      try {
+        parsed = TopicAssignments.parse(JSON.parse(raw));
+      } catch {
+        continue;
+      }
+      const map = new Map(parsed.assignments.map((a) => [a.id, a.topics]));
+      await Promise.all(
+        batch.map(async (l) => {
+          const topics = map.get(l.id);
+          if (!topics?.length) return;
+          const norm = Array.from(
+            new Set(topics.map((t) => t.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "")).filter(Boolean))
+          ).slice(0, 6);
+          if (!norm.length) return;
+          const { error: uerr } = await supabase
+            .from("links")
+            .update({ tags: norm })
+            .eq("id", l.id);
+          if (!uerr) updated.push(l.id);
+        })
+      );
+    }
+
+    return {
+      analyzed: links.length,
+      updated: updated.length,
+      message: `Analyzed ${links.length} link${links.length === 1 ? "" : "s"}, updated ${updated.length} with fresh topics.`,
+    };
+  });
+
