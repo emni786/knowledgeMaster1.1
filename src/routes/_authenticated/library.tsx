@@ -591,16 +591,6 @@ const CenterToolbar = (() => {
                 <TooltipContent>Discover</TooltipContent>
               </Tooltip>
             </Link>
-            <Link to="/knowledge">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-primary/10 hover:text-primary">
-                    <Network className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Knowledge</TooltipContent>
-              </Tooltip>
-            </Link>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-primary/10 hover:text-primary" onClick={() => toast.success("All links healthy")}>
