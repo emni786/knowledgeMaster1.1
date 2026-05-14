@@ -776,7 +776,9 @@ function LinkCard({
     return (
       <button
         onClick={selectMode ? onCheck : onSelect}
-        className={`group text-left rounded-2xl border bg-card p-3 transition hover:-translate-y-0.5 hover:shadow-sm ${selected ? "border-primary/60 ring-1 ring-primary/30" : "border-border/50"}`}
+        aria-pressed={selected}
+        data-selected={selected ? "true" : undefined}
+        className={`group text-left rounded-2xl border p-3 transition hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${selected ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-md -translate-y-0.5" : "border-border/50 bg-card"}`}
       >
         <div className="flex items-start gap-2 mb-2">
           {selectMode && <Checkbox checked={isChecked} className="mt-1" />}
