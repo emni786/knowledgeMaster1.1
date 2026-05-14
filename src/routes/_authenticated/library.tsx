@@ -49,6 +49,34 @@ const TYPE_ICON: Record<ContentType, typeof FileText> = {
   tool: Wrench, thread: MessagesSquare, other: LibraryIcon,
 };
 
+const TYPE_DESCRIPTION: Record<ContentType, string> = {
+  article: "Article — written post, blog, or news story",
+  video: "Video — video content from YouTube, Vimeo, etc.",
+  repo: "Repo — code repository on GitHub or similar",
+  docs: "Docs — documentation, guide, or reference",
+  tool: "Tool — app, service, or utility",
+  thread: "Thread — discussion on Twitter, Reddit, HN, etc.",
+  other: "Other — uncategorized link",
+};
+
+function TypeIcon({ type, className }: { type: ContentType; className?: string }) {
+  const Icon = TYPE_ICON[type];
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex shrink-0"
+          aria-label={TYPE_DESCRIPTION[type]}
+        >
+          <Icon className={className} />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{TYPE_DESCRIPTION[type]}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 const NAV = [
   { to: "/library", label: "Library", icon: LibraryIcon },
   { to: "/dashboard", label: "Dashboard", icon: Activity },
