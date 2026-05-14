@@ -834,7 +834,7 @@ function LinkCard({
             </div>
             <h3 className="font-medium text-sm truncate mt-0.5">{link.title || link.url}</h3>
           </div>
-          <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <Icon className="h-4 w-4 text-primary/70 shrink-0" />
         </div>
         {link.summary && <p className="text-xs text-muted-foreground line-clamp-2">{link.summary}</p>}
         <div className="flex items-center gap-1 mt-2 flex-wrap">
