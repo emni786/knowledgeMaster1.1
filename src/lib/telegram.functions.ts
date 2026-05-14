@@ -5,8 +5,18 @@ import { getRequestHost } from "@tanstack/react-start/server";
 
 const TG_API = "https://api.telegram.org";
 
+const PROJECT_ID = "0320b183-aafd-475b-b3ae-4d955b1f3708";
+
 function publicWebhookUrl(host: string, botId: string): string {
-  return `https://${host}/api/public/telegram/webhook/${botId}`;
+  // Telegram only accepts ports 80/88/443/8443 on public HTTPS hosts.
+  // In dev (localhost:8080) we must use the stable public preview URL instead.
+  const isPublicHost =
+    host &&
+    !host.startsWith("localhost") &&
+    !host.startsWith("127.0.0.1") &&
+    !host.startsWith("0.0.0.0");
+  const publicHost = isPublicHost ? host : `project--${PROJECT_ID}-dev.lovable.app`;
+  return `https://${publicHost}/api/public/telegram/webhook/${botId}`;
 }
 
 export const listTelegramBots = createServerFn({ method: "GET" })
