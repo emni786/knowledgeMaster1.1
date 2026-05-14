@@ -792,7 +792,7 @@ function LinkCard({
         onClick={selectMode ? onCheck : onSelect}
         aria-pressed={selected}
         data-selected={selected ? "true" : undefined}
-        className={`group text-left rounded-2xl border p-3 transition hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${selected ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-md -translate-y-0.5" : "border-border/50 bg-card"}`}
+        className={`group relative overflow-hidden text-left rounded-2xl border p-3 transition hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${selected ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-md -translate-y-0.5" : "border-border/50 bg-card"}`}
       >
         <div className="flex items-start gap-2 mb-2">
           {selectMode && <Checkbox checked={isChecked} className="mt-1" />}
@@ -809,11 +809,22 @@ function LinkCard({
         </div>
         {link.summary && <p className="text-xs text-muted-foreground line-clamp-2">{link.summary}</p>}
         <div className="flex items-center gap-1 mt-2 flex-wrap">
-          {link.tags.slice(0, 3).map((t) => (
-            <span key={t} className="font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-accent text-accent-foreground">#{t}</span>
-          ))}
+          {link.status === "pending" ? (
+            <span className="font-mono text-[10px] text-muted-foreground inline-flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" /> Analyzing…
+            </span>
+          ) : link.status === "failed" ? (
+            <span className="font-mono text-[10px] text-destructive inline-flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" /> Analysis failed
+            </span>
+          ) : (
+            link.tags.slice(0, 3).map((t) => (
+              <span key={t} className="font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-accent text-accent-foreground">#{t}</span>
+            ))
+          )}
           <span className="font-mono text-[10px] text-muted-foreground/60 ml-auto">{ago}</span>
         </div>
+        {link.status === "pending" && <AnalysisProgressBar />}
       </button>
     );
   }
