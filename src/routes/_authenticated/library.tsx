@@ -652,21 +652,43 @@ const CenterToolbar = (() => {
 
 function AddLinkInput({ onAdd, loading }: { onAdd: (raw: string) => void; loading: boolean }) {
   const [val, setVal] = useState("");
+  const detected = useMemo(
+    () => Array.from(new Set(val.split(/[\s,]+/).map((s) => s.trim()).filter((s) => /^https?:\/\//.test(s)))),
+    [val]
+  );
+  const isMulti = val.includes("\n") || detected.length > 1;
+  const submit = () => { if (val.trim()) { onAdd(val); setVal(""); } };
   return (
     <form
-      onSubmit={(e) => { e.preventDefault(); if (val.trim()) { onAdd(val); setVal(""); } }}
-      className="flex items-center gap-2 rounded-2xl border border-border/50 bg-card px-3 py-1.5 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition"
+      onSubmit={(e) => { e.preventDefault(); submit(); }}
+      className="flex items-start gap-2 rounded-2xl border border-border/50 bg-card px-3 py-1.5 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition"
     >
-      <Plus className="h-4 w-4 text-primary shrink-0" />
-      <input
+      <Plus className="h-4 w-4 text-primary shrink-0 mt-1.5" />
+      <textarea
         value={val}
         onChange={(e) => setVal(e.target.value)}
-        placeholder="Paste a URL or several, then press Enter..."
-        className="flex-1 bg-transparent outline-none font-mono text-sm placeholder:text-muted-foreground/60"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+        }}
+        onPaste={(e) => {
+          const text = e.clipboardData.getData("text");
+          if (/\n|,/.test(text) || (text.match(/https?:\/\//g)?.length ?? 0) > 1) {
+            e.preventDefault();
+            setVal((prev) => (prev ? prev + "\n" : "") + text);
+          }
+        }}
+        rows={isMulti ? Math.min(6, Math.max(2, val.split("\n").length)) : 1}
+        placeholder="Paste one URL or many (newlines or commas). Enter to add, Shift+Enter for newline."
+        className="flex-1 bg-transparent outline-none font-mono text-sm placeholder:text-muted-foreground/60 resize-none py-1 leading-5"
       />
-      <Button type="submit" size="sm" className="h-7 font-mono text-[11px]" disabled={loading || !val.trim()}>
-        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Add"}
-      </Button>
+      <div className="flex items-center gap-2 mt-0.5">
+        {detected.length > 1 && (
+          <span className="font-mono text-[10px] text-muted-foreground whitespace-nowrap">{detected.length} URLs</span>
+        )}
+        <Button type="submit" size="sm" className="h-7 font-mono text-[11px]" disabled={loading || !detected.length}>
+          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : detected.length > 1 ? `Add ${detected.length}` : "Add"}
+        </Button>
+      </div>
     </form>
   );
 }
