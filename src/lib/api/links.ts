@@ -12,35 +12,11 @@ export async function fetchLinks(): Promise<LinkRow[]> {
 }
 
 export async function addLinks(urls: string[]): Promise<LinkRow[]> {
-  const { data: userData } = await supabase.auth.getUser();
-  const owner_id = userData.user?.id;
-  if (!owner_id) throw new Error("Not authenticated");
-
-  const rows = urls
-    .map((u) => u.trim())
-    .filter(Boolean)
-    .map((url) => {
-      const norm = normalizeUrl(url);
-      const domain = getDomain(norm);
-      const fallbackTitle = domain || url;
-      return {
-        owner_id,
-        url,
-        normalized_url: norm,
-        domain,
-        content_type: detectContentType(url) as ContentType,
-        status: "ready" as LinkStatus, // mock: mark ready immediately for demo
-        title: fallbackTitle,
-        summary: `Saved link from ${domain || "the web"}.`,
-        tags: [],
-        fetched_at: new Date().toISOString(),
-      };
-    });
-
-  if (!rows.length) return [];
-  const { data, error } = await supabase.from("links" as never).insert(rows as never).select();
-  if (error) throw error;
-  return (data ?? []) as unknown as LinkRow[];
+  const cleaned = urls.map((u) => u.trim()).filter(Boolean);
+  if (!cleaned.length) return [];
+  await analyzeAndSaveLinks({ data: { urls: cleaned } });
+  // Realtime + react-query will refetch; return empty (caller relies on cache).
+  return [];
 }
 
 export async function updateLink(id: string, patch: Partial<LinkRow>): Promise<void> {
