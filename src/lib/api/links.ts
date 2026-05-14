@@ -69,11 +69,7 @@ export async function togglePin(id: string, pinned: boolean): Promise<void> {
 }
 
 export async function retryAnalysis(id: string): Promise<void> {
-  await updateLink(id, { status: "pending", error_message: null } as Partial<LinkRow>);
-  // demo: flip back to ready in a moment
-  setTimeout(() => {
-    updateLink(id, { status: "ready", fetched_at: new Date().toISOString() } as Partial<LinkRow>);
-  }, 1500);
+  await reanalyzeLink({ data: { id } });
 }
 
 export async function bulkAddTag(ids: string[], tag: string): Promise<void> {
