@@ -1,11 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchLinks } from "@/lib/api/links";
 import { AppShell } from "@/components/AppShell";
 import { TopicGraph3D } from "@/components/TopicGraph3D";
-import { Activity, Link2, Pin, AlertTriangle, TrendingUp } from "lucide-react";
+import { analyzeTopics } from "@/lib/insights.functions";
+import { Activity, Link2, Pin, AlertTriangle, TrendingUp, Sparkles, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
@@ -84,7 +88,9 @@ function DashboardPage() {
           icon={Activity}
           title="Knowledge graph"
           subtitle="Each node is a topic from your library. Edges connect topics that appear on the same link. Click a node to see its links."
-        />
+        >
+          <AnalyzeTopicsButton />
+        </Header>
         <TopicGraph3D links={activeLinks} />
       </section>
 
@@ -139,15 +145,52 @@ function Stat({
   );
 }
 
-function Header({ icon: Icon, title, subtitle }: { icon: typeof Activity; title: string; subtitle: string }) {
+function Header({ icon: Icon, title, subtitle, children }: { icon: typeof Activity; title: string; subtitle: string; children?: React.ReactNode }) {
   return (
-    <div className="flex items-end justify-between gap-4">
+    <div className="flex items-end justify-between gap-4 flex-wrap">
       <div>
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
           <Icon className="h-3.5 w-3.5" /> {title}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
       </div>
+      {children}
+    </div>
+  );
+}
+
+function AnalyzeTopicsButton() {
+  const fn = useServerFn(analyzeTopics);
+  const qc = useQueryClient();
+  const [mode, setMode] = useState<"missing" | "all">("missing");
+  const m = useMutation({
+    mutationFn: (force: boolean) => fn({ data: { force } }),
+    onSuccess: (res) => {
+      toast.success(res.message);
+      qc.invalidateQueries({ queryKey: ["links"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => { setMode("missing"); m.mutate(false); }}
+        disabled={m.isPending}
+      >
+        {m.isPending && mode === "missing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+        Analyze new
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => { setMode("all"); m.mutate(true); }}
+        disabled={m.isPending}
+      >
+        {m.isPending && mode === "all" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+        Re-analyze all
+      </Button>
     </div>
   );
 }
