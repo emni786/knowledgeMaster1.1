@@ -4,7 +4,7 @@ import { useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchLinks } from "@/lib/api/links";
 import { AppShell } from "@/components/AppShell";
-import { AtomGraph } from "@/components/AtomGraph";
+import { TopicGraph3D } from "@/components/TopicGraph3D";
 import { Activity, Link2, Pin, AlertTriangle, TrendingUp } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -54,26 +54,7 @@ function DashboardPage() {
     return days;
   }, [links]);
 
-  const atoms = useMemo(() => {
-    const active = links.filter((l) => !l.deleted_at);
-    const byDomain = new Map<string, { value: number; tags: Set<string>; titles: string[] }>();
-    active.forEach((l) => {
-      const k = l.domain ?? "other";
-      const cur = byDomain.get(k) ?? { value: 0, tags: new Set<string>(), titles: [] };
-      cur.value++;
-      (l.tags ?? []).forEach((t) => cur.tags.add(t));
-      if (l.title) cur.titles.push(l.title);
-      byDomain.set(k, cur);
-    });
-    return Array.from(byDomain.entries())
-      .sort((a, b) => b[1].value - a[1].value)
-      .slice(0, 6)
-      .map(([label, v]) => ({
-        label,
-        value: v.value,
-        electrons: (v.tags.size ? Array.from(v.tags) : v.titles).slice(0, 5),
-      }));
-  }, [links]);
+  const activeLinks = useMemo(() => links.filter((l) => !l.deleted_at), [links]);
 
   const qc = useQueryClient();
   useEffect(() => {
@@ -99,8 +80,12 @@ function DashboardPage() {
       </div>
 
       <section className="space-y-3">
-        <Header icon={Activity} title="Knowledge atoms" subtitle="Top domains in your library, electrons are tags or titles." />
-        <AtomGraph atoms={atoms} />
+        <Header
+          icon={Activity}
+          title="Knowledge graph"
+          subtitle="Each node is a topic from your library. Edges connect topics that appear on the same link. Click a node to see its links."
+        />
+        <TopicGraph3D links={activeLinks} />
       </section>
 
       <section className="space-y-3">
