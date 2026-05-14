@@ -187,7 +187,11 @@ function LibraryPage() {
   // Mutations
   const addMut = useMutation({
     mutationFn: addLinks,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["links"] }); toast.success("Link saved"); },
+    onSuccess: (rows) => {
+      qc.invalidateQueries({ queryKey: ["links"] });
+      const n = Array.isArray(rows) ? rows.length : 1;
+      toast.success(n > 1 ? `Added ${n} links` : "Link saved");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const deleteMut = useMutation({
@@ -200,10 +204,13 @@ function LibraryPage() {
   });
 
   const handleAdd = (raw: string) => {
-    const urls = raw.split(/\s+/).map((s) => s.trim()).filter((s) => /^https?:\/\//.test(s));
-    if (!urls.length) return toast.error("Enter a valid URL");
+    const urls = Array.from(new Set(
+      raw.split(/[\s,]+/).map((s) => s.trim()).filter((s) => /^https?:\/\//.test(s))
+    ));
+    if (!urls.length) return toast.error("Enter one or more valid URLs");
     addMut.mutate(urls);
   };
+
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
