@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ReactNode } from "react";
 import {
-  Activity, Compass, Network, BarChart3, Newspaper, Settings,
+  Activity, Compass, BarChart3, Newspaper, Settings,
   Library as LibraryIcon, Menu,
 } from "lucide-react";
 import { Wordmark } from "@/components/Logo";
@@ -13,7 +13,6 @@ const NAV = [
   { to: "/library", label: "Library", icon: LibraryIcon },
   { to: "/dashboard", label: "Dashboard", icon: Activity },
   { to: "/discover", label: "Discover", icon: Compass },
-  { to: "/knowledge", label: "Knowledge", icon: Network },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/digest", label: "Digest", icon: Newspaper },
   { to: "/settings", label: "Settings", icon: Settings },

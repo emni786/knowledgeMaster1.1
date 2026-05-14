@@ -53,7 +53,7 @@ const NAV = [
   { to: "/library", label: "Library", icon: LibraryIcon },
   { to: "/dashboard", label: "Dashboard", icon: Activity },
   { to: "/discover", label: "Discover", icon: Compass },
-  { to: "/knowledge", label: "Knowledge", icon: Network },
+  
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/digest", label: "Digest", icon: Newspaper },
   { to: "/settings", label: "Settings", icon: Settings },
@@ -589,16 +589,6 @@ const CenterToolbar = (() => {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Discover</TooltipContent>
-              </Tooltip>
-            </Link>
-            <Link to="/knowledge">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-primary/10 hover:text-primary">
-                    <Network className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Knowledge</TooltipContent>
               </Tooltip>
             </Link>
             <Tooltip>
