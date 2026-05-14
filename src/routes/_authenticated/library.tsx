@@ -425,29 +425,6 @@ function LibraryPage() {
             </div>
           </main>
 
-          {/* Right detail panel */}
-          <aside className="border-l border-border/50 bg-card/30 h-screen sticky top-0 overflow-y-auto scrollbar-thin">
-            {selectedLink ? (
-              <DetailPanel
-                link={selectedLink}
-                onClose={() => setSelected(null)}
-                onDelete={(id) => deleteMut.mutate(id)}
-                onPin={(id, p) => pinMut.mutate({ id, pinned: !p })}
-                onRetry={(id) => retryAnalysis(id).then(() => qc.invalidateQueries({ queryKey: ["links"] }))}
-                onUpdate={async (id, patch) => {
-                  await updateLink(id, patch);
-                  qc.invalidateQueries({ queryKey: ["links"] });
-                }}
-                allLinks={allLinks}
-              />
-            ) : (
-              <div className="h-full flex items-center justify-center p-10 text-center">
-                <p className="text-xs text-muted-foreground/60 font-mono tracking-wide">
-                  Select a link to view details
-                </p>
-              </div>
-            )}
-          </aside>
         </div>
 
         {/* Mobile body */}
