@@ -771,12 +771,21 @@ function LinkCard({
   const Icon = TYPE_ICON[link.content_type];
   const domain = link.domain || getDomain(link.url);
   const ago = link.created_at ? formatDistanceToNow(new Date(link.created_at), { addSuffix: true }) : "";
+  const ref = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (selected && ref.current) {
+      ref.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [selected]);
 
   if (view === "grid") {
     return (
       <button
+        ref={ref as React.RefObject<HTMLButtonElement>}
         onClick={selectMode ? onCheck : onSelect}
-        className={`group text-left rounded-2xl border bg-card p-3 transition hover:-translate-y-0.5 hover:shadow-sm ${selected ? "border-primary/60 ring-1 ring-primary/30" : "border-border/50"}`}
+        aria-pressed={selected}
+        data-selected={selected ? "true" : undefined}
+        className={`group text-left rounded-2xl border p-3 transition hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${selected ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-md -translate-y-0.5" : "border-border/50 bg-card"}`}
       >
         <div className="flex items-start gap-2 mb-2">
           {selectMode && <Checkbox checked={isChecked} className="mt-1" />}
@@ -804,8 +813,14 @@ function LinkCard({
 
   return (
     <div
+      ref={ref as React.RefObject<HTMLDivElement>}
       onClick={selectMode ? onCheck : onSelect}
-      className={`group flex items-center gap-3 rounded-2xl border bg-card px-3 py-2 cursor-pointer transition hover:bg-accent/40 ${selected ? "border-primary/60 ring-1 ring-primary/30" : "border-border/50"}`}
+      role="button"
+      tabIndex={0}
+      aria-selected={selected}
+      data-selected={selected ? "true" : undefined}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); (selectMode ? onCheck : onSelect)(); } }}
+      className={`group relative flex items-center gap-3 rounded-2xl border px-3 py-2 cursor-pointer transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${selected ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-sm pl-4 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:rounded-r-full before:bg-primary" : "border-border/50 bg-card hover:bg-accent/40"}`}
     >
       {selectMode && <Checkbox checked={isChecked} />}
       {showNumbers && <span className="font-mono text-[10px] text-muted-foreground w-6 text-right">{index}.</span>}
