@@ -77,6 +77,21 @@ function TelegramBots() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const testMut = useMutation({
+    mutationFn: (id: string) => test({ data: { id } }),
+    onSuccess: (res) => {
+      if (res.repaired) {
+        toast.success("Webhook URL was wrong — re-registered with Telegram.");
+      } else if (res.lastErrorMessage) {
+        toast.warning(`Webhook OK, but Telegram reports: ${res.lastErrorMessage}`);
+      } else {
+        toast.success(`Webhook OK · ${res.pendingUpdates} pending update${res.pendingUpdates === 1 ? "" : "s"}.`);
+      }
+      qc.invalidateQueries({ queryKey: ["telegram-bots"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const bots = data?.bots ?? [];
 
   return (
