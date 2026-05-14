@@ -49,6 +49,34 @@ const TYPE_ICON: Record<ContentType, typeof FileText> = {
   tool: Wrench, thread: MessagesSquare, other: LibraryIcon,
 };
 
+const TYPE_DESCRIPTION: Record<ContentType, string> = {
+  article: "Article — written post, blog, or news story",
+  video: "Video — video content from YouTube, Vimeo, etc.",
+  repo: "Repo — code repository on GitHub or similar",
+  docs: "Docs — documentation, guide, or reference",
+  tool: "Tool — app, service, or utility",
+  thread: "Thread — discussion on Twitter, Reddit, HN, etc.",
+  other: "Other — uncategorized link",
+};
+
+function TypeIcon({ type, className }: { type: ContentType; className?: string }) {
+  const Icon = TYPE_ICON[type];
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex shrink-0"
+          aria-label={TYPE_DESCRIPTION[type]}
+        >
+          <Icon className={className} />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{TYPE_DESCRIPTION[type]}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 const NAV = [
   { to: "/library", label: "Library", icon: LibraryIcon },
   { to: "/dashboard", label: "Dashboard", icon: Activity },
@@ -834,7 +862,7 @@ function LinkCard({
             </div>
             <h3 className="font-medium text-sm truncate mt-0.5">{link.title || link.url}</h3>
           </div>
-          <Icon className="h-4 w-4 text-primary/70 shrink-0" />
+          <TypeIcon type={link.content_type} className="h-4 w-4 text-primary/70" />
         </div>
         {link.summary && <p className="text-xs text-muted-foreground line-clamp-2">{link.summary}</p>}
         <div className="flex items-center gap-1 mt-2 flex-wrap">
@@ -895,7 +923,7 @@ function LinkCard({
           <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{link.summary}</p>
         )}
       </div>
-      <Icon className="h-4 w-4 text-primary/70 shrink-0" />
+      <TypeIcon type={link.content_type} className="h-4 w-4 text-primary/70" />
       <button
         onClick={(e) => { e.stopPropagation(); onPin(link.pinned); }}
         className="opacity-0 group-hover:opacity-100 transition text-muted-foreground hover:text-primary"
