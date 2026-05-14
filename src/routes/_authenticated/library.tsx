@@ -701,10 +701,10 @@ function StatCard({
 
 function CollectionsBlock({
   collections, activeId, onSelect,
-}: { collections: ReturnType<typeof Array<never>> extends infer T ? T : never; activeId: string | null; onSelect: (id: string | null) => void }) {
+}: { collections: { id: string; name: string }[]; activeId: string | null; onSelect: (id: string | null) => void }) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
-  const list = collections as { id: string; name: string }[];
+  const list = collections;
   return (
     <div className="px-4 py-3 border-t border-border/50">
       <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Collections</div>
