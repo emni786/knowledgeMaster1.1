@@ -11,7 +11,7 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/digest")({
   head: () => ({
     meta: [
-      { title: "Digest — Xenonowledge" },
+      { title: "Digest — Knowledgemaster" },
       { name: "description", content: "AI-written digest of everything you saved this week or month." },
     ],
   }),

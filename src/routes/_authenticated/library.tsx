@@ -35,9 +35,9 @@ import { formatDistanceToNow } from "date-fns";
 export const Route = createFileRoute("/_authenticated/library")({
   head: () => ({
     meta: [
-      { title: "Library — Xenonowledge" },
+      { title: "Library — Knowledgemaster" },
       { name: "description", content: "Browse, search, filter, and manage your AI-tagged link library. Bulk actions, collections, and smart organization for every saved link." },
-      { property: "og:title", content: "Library — Xenonowledge" },
+      { property: "og:title", content: "Library — Knowledgemaster" },
     ],
     links: [{ rel: "canonical", href: "/library" }],
   }),
@@ -524,7 +524,7 @@ function MobileHeader({ email, onAdd, onSignOut }: { email?: string; onAdd: (raw
     <header className="lg:hidden glass sticky top-0 z-30 border-b border-border/50 px-4 py-3 flex items-center gap-2">
       <Logo />
       <div className="flex flex-col leading-tight min-w-0 flex-1">
-        <span className="font-mono text-sm font-semibold">Xenonowledge</span>
+        <span className="font-mono text-sm font-semibold">Knowledgemaster</span>
         {email && <span className="text-[10px] text-muted-foreground truncate">{email}</span>}
       </div>
       <ThemeToggle />

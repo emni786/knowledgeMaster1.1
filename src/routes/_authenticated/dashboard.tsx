@@ -19,7 +19,7 @@ import { format, subDays, startOfDay } from "date-fns";
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "Dashboard — Xenonowledge" },
+      { title: "Dashboard — Knowledgemaster" },
       { name: "description", content: "3D atoms view of your knowledge library, real-time stats, and ingest velocity." },
     ],
   }),

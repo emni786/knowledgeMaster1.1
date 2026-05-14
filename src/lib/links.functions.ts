@@ -73,7 +73,7 @@ async function fetchPage(url: string): Promise<string> {
       redirect: "follow",
       signal: ctrl.signal,
       headers: {
-        "user-agent": "Mozilla/5.0 (compatible; XenonowledgeBot/1.0; +https://xenonowledge.app)",
+        "user-agent": "Mozilla/5.0 (compatible; KnowledgemasterBot/1.0; +https://xenonowledge.app)",
         accept: "text/html,application/xhtml+xml",
       },
     });

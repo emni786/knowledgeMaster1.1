@@ -12,7 +12,7 @@ import { Logo } from "@/components/Logo";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Sign in — Xenonowledge" },
+      { title: "Sign in — Knowledgemaster" },
       { name: "description", content: "Sign in to your AI link librarian." },
     ],
   }),
@@ -79,7 +79,7 @@ function AuthPage() {
         <div className="flex flex-col items-center gap-3 mb-8">
           <Logo size={48} />
           <div className="text-center">
-            <h1 className="font-mono text-xl font-semibold">Xenonowledge</h1>
+            <h1 className="font-mono text-xl font-semibold">Knowledgemaster</h1>
             <p className="text-xs text-muted-foreground mt-1">Your AI-powered link library</p>
           </div>
         </div>
