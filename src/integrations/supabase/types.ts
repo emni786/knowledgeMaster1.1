@@ -14,7 +14,180 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      analytics_events: {
+        Row: {
+          created_at: string
+          event: string
+          id: string
+          owner_id: string
+          payload: Json
+        }
+        Insert: {
+          created_at?: string
+          event: string
+          id?: string
+          owner_id: string
+          payload?: Json
+        }
+        Update: {
+          created_at?: string
+          event?: string
+          id?: string
+          owner_id?: string
+          payload?: Json
+        }
+        Relationships: []
+      }
+      collection_links: {
+        Row: {
+          added_at: string
+          collection_id: string
+          link_id: string
+        }
+        Insert: {
+          added_at?: string
+          collection_id: string
+          link_id: string
+        }
+        Update: {
+          added_at?: string
+          collection_id?: string
+          link_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_links_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collection_links_link_id_fkey"
+            columns: ["link_id"]
+            isOneToOne: false
+            referencedRelation: "links"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collections: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_public: boolean
+          name: string
+          owner_id: string
+          share_token: string | null
+          slug: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_public?: boolean
+          name: string
+          owner_id: string
+          share_token?: string | null
+          slug?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_public?: boolean
+          name?: string
+          owner_id?: string
+          share_token?: string | null
+          slug?: string | null
+        }
+        Relationships: []
+      }
+      links: {
+        Row: {
+          content_type: string
+          created_at: string
+          deleted_at: string | null
+          domain: string | null
+          error_message: string | null
+          fetched_at: string | null
+          id: string
+          normalized_url: string | null
+          owner_id: string
+          pinned: boolean
+          source: string
+          status: string
+          summary: string | null
+          tags: string[]
+          title: string | null
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          content_type?: string
+          created_at?: string
+          deleted_at?: string | null
+          domain?: string | null
+          error_message?: string | null
+          fetched_at?: string | null
+          id?: string
+          normalized_url?: string | null
+          owner_id: string
+          pinned?: boolean
+          source?: string
+          status?: string
+          summary?: string | null
+          tags?: string[]
+          title?: string | null
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          content_type?: string
+          created_at?: string
+          deleted_at?: string | null
+          domain?: string | null
+          error_message?: string | null
+          fetched_at?: string | null
+          id?: string
+          normalized_url?: string | null
+          owner_id?: string
+          pinned?: boolean
+          source?: string
+          status?: string
+          summary?: string | null
+          tags?: string[]
+          title?: string | null
+          updated_at?: string
+          url?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string | null
+          id: string
+          username: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          id: string
+          username?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
