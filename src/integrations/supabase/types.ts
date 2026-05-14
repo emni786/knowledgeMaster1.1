@@ -188,6 +188,45 @@ export type Database = {
         }
         Relationships: []
       }
+      telegram_bots: {
+        Row: {
+          active: boolean
+          bot_id: number | null
+          bot_token: string
+          bot_username: string | null
+          created_at: string
+          id: string
+          last_error: string | null
+          owner_id: string
+          updated_at: string
+          webhook_secret: string
+        }
+        Insert: {
+          active?: boolean
+          bot_id?: number | null
+          bot_token: string
+          bot_username?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          owner_id: string
+          updated_at?: string
+          webhook_secret?: string
+        }
+        Update: {
+          active?: boolean
+          bot_id?: number | null
+          bot_token?: string
+          bot_username?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          owner_id?: string
+          updated_at?: string
+          webhook_secret?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
