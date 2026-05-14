@@ -440,7 +440,13 @@ function LibraryPage() {
                 }}
                 allLinks={allLinks}
               />
-            ) : null}
+            ) : (
+              <div className="h-full flex items-center justify-center p-10 text-center">
+                <p className="text-xs text-muted-foreground/60 font-mono tracking-wide">
+                  Select a link to view details
+                </p>
+              </div>
+            )}
           </aside>
         </div>
 
