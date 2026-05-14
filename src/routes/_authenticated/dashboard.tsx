@@ -10,7 +10,7 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
 import { format, subDays, startOfDay } from "date-fns";
-import { useEffect } from "react";
+
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
