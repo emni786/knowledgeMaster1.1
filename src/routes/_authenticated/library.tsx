@@ -440,14 +440,7 @@ function LibraryPage() {
                 }}
                 allLinks={allLinks}
               />
-            ) : (
-              <div className="h-full flex items-center justify-center p-8 text-center">
-                <div className="space-y-3 opacity-60">
-                  <Inbox className="h-10 w-10 mx-auto text-muted-foreground" />
-                  <p className="font-mono text-xs text-muted-foreground">Select a link to see details</p>
-                </div>
-              </div>
-            )}
+            ) : null}
           </aside>
         </div>
 
