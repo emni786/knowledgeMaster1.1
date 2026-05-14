@@ -345,8 +345,6 @@ function LibraryPage() {
                   <StatCard label="Dupes" value={stats.duplicates} onClick={() => setFilters({ ...filters, showDuplicates: !filters.showDuplicates })} />
                   <StatCard label="Trash" value={stats.deleted} onClick={() => { setRecycleOpen(true); }} />
                 </div>
-              </div>
-            )}
 
                 <div className="mt-3 pt-3 border-t border-border/50">
                   <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">By type</div>
