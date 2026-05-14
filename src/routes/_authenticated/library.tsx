@@ -105,6 +105,23 @@ function LibraryPage() {
     return () => { supabase.removeChannel(channel); };
   }, [qc]);
 
+  // Track status transitions (pending → ready / failed) for inline feedback
+  const prevStatusRef = useRef<Map<string, LinkStatus>>(new Map());
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    const next = new Map<string, LinkStatus>();
+    for (const l of allLinks) {
+      next.set(l.id, l.status);
+      const before = prev.get(l.id);
+      if (before === "pending" && l.status === "ready") {
+        toast.success(`Analyzed: ${l.title || l.domain || l.url}`);
+      } else if (before === "pending" && l.status === "failed") {
+        toast.error(`Analysis failed: ${l.domain || l.url}`);
+      }
+    }
+    prevStatusRef.current = next;
+  }, [allLinks]);
+
   const stats = useMemo(() => {
     const active = allLinks.filter((l) => !l.deleted_at);
     const seen = new Map<string, number>();
@@ -775,7 +792,7 @@ function LinkCard({
         onClick={selectMode ? onCheck : onSelect}
         aria-pressed={selected}
         data-selected={selected ? "true" : undefined}
-        className={`group text-left rounded-2xl border p-3 transition hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${selected ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-md -translate-y-0.5" : "border-border/50 bg-card"}`}
+        className={`group relative overflow-hidden text-left rounded-2xl border p-3 transition hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${selected ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-md -translate-y-0.5" : "border-border/50 bg-card"}`}
       >
         <div className="flex items-start gap-2 mb-2">
           {selectMode && <Checkbox checked={isChecked} className="mt-1" />}
@@ -792,11 +809,22 @@ function LinkCard({
         </div>
         {link.summary && <p className="text-xs text-muted-foreground line-clamp-2">{link.summary}</p>}
         <div className="flex items-center gap-1 mt-2 flex-wrap">
-          {link.tags.slice(0, 3).map((t) => (
-            <span key={t} className="font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-accent text-accent-foreground">#{t}</span>
-          ))}
+          {link.status === "pending" ? (
+            <span className="font-mono text-[10px] text-muted-foreground inline-flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" /> Analyzing…
+            </span>
+          ) : link.status === "failed" ? (
+            <span className="font-mono text-[10px] text-destructive inline-flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" /> Analysis failed
+            </span>
+          ) : (
+            link.tags.slice(0, 3).map((t) => (
+              <span key={t} className="font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-accent text-accent-foreground">#{t}</span>
+            ))
+          )}
           <span className="font-mono text-[10px] text-muted-foreground/60 ml-auto">{ago}</span>
         </div>
+        {link.status === "pending" && <AnalysisProgressBar />}
       </button>
     );
   }
@@ -810,7 +838,7 @@ function LinkCard({
       aria-selected={selected}
       data-selected={selected ? "true" : undefined}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); (selectMode ? onCheck : onSelect)(); } }}
-      className={`group relative flex items-center gap-3 rounded-2xl border px-3 py-2 cursor-pointer transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${selected ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-sm pl-4 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:rounded-r-full before:bg-primary" : "border-border/50 bg-card hover:bg-accent/40"}`}
+      className={`group relative overflow-hidden flex items-center gap-3 rounded-2xl border px-3 py-2 cursor-pointer transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${selected ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-sm pl-4 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:rounded-r-full before:bg-primary" : "border-border/50 bg-card hover:bg-accent/40"}`}
     >
       {selectMode && <Checkbox checked={isChecked} />}
       {showNumbers && <span className="font-mono text-[10px] text-muted-foreground w-6 text-right">{index}.</span>}
@@ -824,9 +852,15 @@ function LinkCard({
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           <span className="font-mono text-[10px] text-muted-foreground truncate">{domain}</span>
-          {link.tags.slice(0, 4).map((t) => (
-            <span key={t} className="font-mono text-[10px] text-primary/80">#{t}</span>
-          ))}
+          {link.status === "pending" ? (
+            <span className="font-mono text-[10px] text-muted-foreground">Analyzing…</span>
+          ) : link.status === "failed" ? (
+            <span className="font-mono text-[10px] text-destructive">Analysis failed</span>
+          ) : (
+            link.tags.slice(0, 4).map((t) => (
+              <span key={t} className="font-mono text-[10px] text-primary/80">#{t}</span>
+            ))
+          )}
         </div>
       </div>
       <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -837,7 +871,19 @@ function LinkCard({
         <Pin className={`h-3.5 w-3.5 ${link.pinned ? "fill-primary text-primary" : ""}`} />
       </button>
       <span className="font-mono text-[10px] text-muted-foreground/60 hidden md:block">{ago}</span>
+      {link.status === "pending" && <AnalysisProgressBar />}
     </div>
+  );
+}
+
+function AnalysisProgressBar() {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden bg-primary/10"
+    >
+      <span className="block h-full w-1/3 rounded-full bg-primary animate-[xn-progress_1.4s_ease-in-out_infinite]" />
+    </span>
   );
 }
 
