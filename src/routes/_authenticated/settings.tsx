@@ -49,6 +49,7 @@ function TelegramBots() {
   const list = useServerFn(listTelegramBots);
   const add = useServerFn(addTelegramBot);
   const remove = useServerFn(deleteTelegramBot);
+  const test = useServerFn(testTelegramWebhook);
   const [token, setToken] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
