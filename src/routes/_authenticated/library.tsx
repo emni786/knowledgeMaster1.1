@@ -838,7 +838,7 @@ function LinkCard({
       aria-selected={selected}
       data-selected={selected ? "true" : undefined}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); (selectMode ? onCheck : onSelect)(); } }}
-      className={`group relative flex items-center gap-3 rounded-2xl border px-3 py-2 cursor-pointer transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${selected ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-sm pl-4 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:rounded-r-full before:bg-primary" : "border-border/50 bg-card hover:bg-accent/40"}`}
+      className={`group relative overflow-hidden flex items-center gap-3 rounded-2xl border px-3 py-2 cursor-pointer transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${selected ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-sm pl-4 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:rounded-r-full before:bg-primary" : "border-border/50 bg-card hover:bg-accent/40"}`}
     >
       {selectMode && <Checkbox checked={isChecked} />}
       {showNumbers && <span className="font-mono text-[10px] text-muted-foreground w-6 text-right">{index}.</span>}
@@ -852,9 +852,15 @@ function LinkCard({
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           <span className="font-mono text-[10px] text-muted-foreground truncate">{domain}</span>
-          {link.tags.slice(0, 4).map((t) => (
-            <span key={t} className="font-mono text-[10px] text-primary/80">#{t}</span>
-          ))}
+          {link.status === "pending" ? (
+            <span className="font-mono text-[10px] text-muted-foreground">Analyzing…</span>
+          ) : link.status === "failed" ? (
+            <span className="font-mono text-[10px] text-destructive">Analysis failed</span>
+          ) : (
+            link.tags.slice(0, 4).map((t) => (
+              <span key={t} className="font-mono text-[10px] text-primary/80">#{t}</span>
+            ))
+          )}
         </div>
       </div>
       <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -865,7 +871,19 @@ function LinkCard({
         <Pin className={`h-3.5 w-3.5 ${link.pinned ? "fill-primary text-primary" : ""}`} />
       </button>
       <span className="font-mono text-[10px] text-muted-foreground/60 hidden md:block">{ago}</span>
+      {link.status === "pending" && <AnalysisProgressBar />}
     </div>
+  );
+}
+
+function AnalysisProgressBar() {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden bg-primary/10"
+    >
+      <span className="block h-full w-1/3 rounded-full bg-primary animate-[xn-progress_1.4s_ease-in-out_infinite]" />
+    </span>
   );
 }
 
