@@ -348,6 +348,32 @@ function LibraryPage() {
               </div>
             )}
 
+                <div className="mt-3 pt-3 border-t border-border/50">
+                  <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">By type</div>
+                  <div className="space-y-0.5">
+                    {(Object.keys(TYPE_ICON) as ContentType[])
+                      .filter((t) => stats.byType[t] > 0)
+                      .sort((a, b) => stats.byType[b] - stats.byType[a])
+                      .map((t) => {
+                        const TIcon = TYPE_ICON[t];
+                        const isActive = filters.contentType === t;
+                        return (
+                          <button
+                            key={t}
+                            onClick={() => setFilters({ ...filters, contentType: isActive ? "all" : t, showDeleted: false })}
+                            className={`w-full flex items-center gap-2 px-1.5 py-1 rounded-md text-xs transition ${isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"}`}
+                          >
+                            <TIcon className="h-3.5 w-3.5 text-primary/70" />
+                            <span className="capitalize flex-1 text-left">{t}</span>
+                            <span className="font-mono text-[10px] tabular-nums">{stats.byType[t]}</span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {!collapsed && (
               <div className="px-4 py-3 border-t border-border/50 space-y-2">
                 <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Filters</div>
