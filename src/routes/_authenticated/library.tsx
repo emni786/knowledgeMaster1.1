@@ -24,7 +24,7 @@ import { Wordmark, Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { PageTabs } from "@/components/PageTabs";
 import { useLocalStorage } from "@/lib/local-storage";
-import { faviconFor, getDomain } from "@/lib/url";
+import { faviconFor, getDomain, normalizeUrl } from "@/lib/url";
 import {
   fetchLinks, addLinks, updateLink, softDeleteLink, softDeleteMany,
   togglePin, retryAnalysis, restoreLink, permanentlyDelete, emptyTrash, bulkAddTag,
