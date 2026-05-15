@@ -261,6 +261,41 @@ function LibraryPage() {
     addMut.mutate(urls);
   };
 
+  const handleExport = (format: "json" | "csv" | "txt") => {
+    const rows = visible;
+    if (!rows.length) return toast.error("Nothing to export");
+    let blob: Blob;
+    let filename: string;
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (format === "json") {
+      blob = new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" });
+      filename = `knowledgemaster-${stamp}.json`;
+    } else if (format === "csv") {
+      const esc = (v: unknown) => {
+        const s = v == null ? "" : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const header = ["url", "title", "domain", "content_type", "status", "tags", "pinned", "summary", "created_at"];
+      const lines = [header.join(",")];
+      for (const l of rows) {
+        lines.push([
+          l.url, l.title ?? "", l.domain ?? "", l.content_type, l.status,
+          (l.tags ?? []).join("|"), l.pinned, l.summary ?? "", l.created_at,
+        ].map(esc).join(","));
+      }
+      blob = new Blob([lines.join("\n")], { type: "text/csv" });
+      filename = `knowledgemaster-${stamp}.csv`;
+    } else {
+      blob = new Blob([rows.map((l) => l.url).join("\n")], { type: "text/plain" });
+      filename = `knowledgemaster-${stamp}.txt`;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${rows.length} links as ${format.toUpperCase()}`);
+  };
+
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
