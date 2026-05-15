@@ -232,3 +232,154 @@ function TelegramBots() {
     </section>
   );
 }
+
+function BrowserExtension() {
+  const qc = useQueryClient();
+  const list = useServerFn(listApiTokens);
+  const create = useServerFn(createApiToken);
+  const revoke = useServerFn(revokeApiToken);
+  const [justCreated, setJustCreated] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["api-tokens"],
+    queryFn: () => list(),
+  });
+
+  const createMut = useMutation({
+    mutationFn: () => create({ data: { label: "Browser extension" } }),
+    onSuccess: (res) => {
+      setJustCreated(res.token);
+      qc.invalidateQueries({ queryKey: ["api-tokens"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const revokeMut = useMutation({
+    mutationFn: (id: string) => revoke({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Token revoked");
+      qc.invalidateQueries({ queryKey: ["api-tokens"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const downloadExtension = () => {
+    fetch("/knowledgemaster-extension.zip")
+      .then((r) => {
+        if (!r.ok) throw new Error(`Download failed: ${r.status}`);
+        return r.blob();
+      })
+      .then((blob) => {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "knowledgemaster-extension.zip";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      })
+      .catch((err) => toast.error(err.message));
+  };
+
+  const tokens = data?.tokens ?? [];
+
+  return (
+    <section className="rounded-xl border border-border/60 bg-card/40 p-6">
+      <div className="flex items-start gap-3">
+        <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary/10 text-primary">
+          <Chrome className="h-5 w-5" />
+        </div>
+        <div className="flex-1">
+          <h3 className="font-display text-lg font-semibold">Browser extension</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Save the page you're on to Knowledgemaster with one click. Install the Chrome extension,
+            then paste an API token below to connect it to your account.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <Button onClick={downloadExtension} variant="outline" className="justify-start gap-2">
+          <Download className="h-4 w-4" /> Download extension (.zip)
+        </Button>
+        <Button onClick={() => createMut.mutate()} disabled={createMut.isPending} className="justify-start gap-2">
+          {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          Generate API token
+        </Button>
+      </div>
+
+      {justCreated && (
+        <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Your new token — copy it now</p>
+          <p className="mt-1 text-xs text-muted-foreground">This is shown once. Paste it into the extension popup.</p>
+          <div className="mt-3 flex gap-2">
+            <Input readOnly value={justCreated} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => {
+                navigator.clipboard.writeText(justCreated);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+            </Button>
+            <Button variant="ghost" onClick={() => setJustCreated(null)}>Done</Button>
+          </div>
+        </div>
+      )}
+
+      <details className="mt-6 rounded-lg border border-border/60 bg-background/60 p-4 text-sm">
+        <summary className="cursor-pointer font-medium">Install instructions</summary>
+        <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-muted-foreground">
+          <li>Download and unzip the extension.</li>
+          <li>Open <code className="rounded bg-muted px-1">chrome://extensions</code> in Chrome (or any Chromium browser).</li>
+          <li>Enable <strong>Developer mode</strong> (top-right toggle).</li>
+          <li>Click <strong>Load unpacked</strong> and select the unzipped folder.</li>
+          <li>Click the extension icon, paste your API token, then save any page.</li>
+        </ol>
+      </details>
+
+      <div className="mt-8 space-y-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">API tokens</h4>
+        {isLoading ? (
+          <div className="rounded-lg border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">Loading…</div>
+        ) : tokens.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">
+            No tokens yet. Generate one to connect the extension.
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {tokens.map((t) => (
+              <li key={t.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <KeyRound className="h-4 w-4 text-primary" />
+                    <span>{t.label}</span>
+                    <code className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono">{t.token_prefix}…</code>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Created {new Date(t.created_at).toLocaleDateString()}
+                    {t.last_used_at ? ` · Last used ${new Date(t.last_used_at).toLocaleDateString()}` : " · Never used"}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive hover:text-destructive"
+                  disabled={revokeMut.isPending}
+                  onClick={() => {
+                    if (confirm("Revoke this token? The extension using it will stop working.")) revokeMut.mutate(t.id);
+                  }}
+                  title="Revoke"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
