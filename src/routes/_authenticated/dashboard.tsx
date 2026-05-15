@@ -126,6 +126,8 @@ function DashboardPage() {
           </ResponsiveContainer>
         </div>
       </section>
+
+      <RssFeedsSection />
     </AppShell>
   );
 }
