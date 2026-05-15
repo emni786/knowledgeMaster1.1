@@ -728,7 +728,9 @@ const CenterToolbar = (() => {
   showNumbers: boolean; setShowNumbers: (v: boolean) => void;
   selectMode: boolean; setSelectMode: (v: boolean) => void;
   onAdd: (raw: string) => void; addPending: boolean;
-  onSmartSearch: () => void; onImport: () => void; onRefresh: () => void;
+  onSmartSearch: () => void; onImport: () => void;
+  onExport: (format: "json" | "csv" | "txt") => void;
+  onRefresh: () => void;
   onOpenFilters: () => void;
 } & React.RefAttributes<HTMLInputElement>>;
 
