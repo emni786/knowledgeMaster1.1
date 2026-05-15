@@ -2,14 +2,16 @@
 //
 // Uses Google AI Studio's OpenAI-compatible endpoint by default so the existing
 // chat/completions JSON payloads keep working. Override AI_BASE_URL / AI_MODEL
-// if you want to point at another OpenAI-compatible provider (OpenAI, OpenRouter,
-// a local LLM, etc.) without touching call sites.
+// in either `admin_settings` (via the in-app admin UI) or in process.env if you
+// want to point at another OpenAI-compatible provider (OpenAI, OpenRouter, a
+// local LLM, etc.) without touching call sites.
 //
-// Required env:
-//   GOOGLE_AI_API_KEY  — get one from https://aistudio.google.com/apikey
-// Optional env:
-//   AI_BASE_URL        — defaults to Google Gemini's OpenAI-compatible base
-//   AI_MODEL           — defaults to "gemini-2.5-flash"
+// Configuration sources (DB wins, env loses):
+//   admin_settings.google_ai_api_key  →  process.env.GOOGLE_AI_API_KEY
+//   admin_settings.ai_base_url        →  process.env.AI_BASE_URL
+//   admin_settings.ai_model           →  process.env.AI_MODEL
+
+import { resolveRuntimeConfig } from "@/lib/runtime-config";
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai";
 const DEFAULT_MODEL = "gemini-2.5-flash";
@@ -34,21 +36,21 @@ export interface AIConfig {
   model: string;
 }
 
-export function getAIConfig(): AIConfig | null {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) return null;
+export async function getAIConfig(): Promise<AIConfig | null> {
+  const cfg = await resolveRuntimeConfig();
+  if (!cfg.googleAiApiKey) return null;
   return {
-    apiKey,
-    baseUrl: (process.env.AI_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, ""),
-    model: process.env.AI_MODEL || DEFAULT_MODEL,
+    apiKey: cfg.googleAiApiKey,
+    baseUrl: (cfg.aiBaseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, ""),
+    model: cfg.aiModel ?? DEFAULT_MODEL,
   };
 }
 
-export function requireAIConfig(): AIConfig {
-  const config = getAIConfig();
+export async function requireAIConfig(): Promise<AIConfig> {
+  const config = await getAIConfig();
   if (!config) {
     throw new Error(
-      "AI is not configured. Set GOOGLE_AI_API_KEY (and optionally AI_BASE_URL / AI_MODEL) in your environment.",
+      "AI is not configured. Set GOOGLE_AI_API_KEY (env) or save it from the in-app admin Settings page.",
     );
   }
   return config;
@@ -59,7 +61,7 @@ export function requireAIConfig(): AIConfig {
  * message content. Throws if the request fails; callers handle JSON parsing.
  */
 export async function chatCompletion(options: ChatCompletionOptions): Promise<string> {
-  const config = requireAIConfig();
+  const config = await requireAIConfig();
   const res = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {

@@ -118,7 +118,7 @@ async function aiAnalyze(input: {
   meta: { title: string; description: string; siteName: string };
   bodyText: string;
 }): Promise<Analysis | null> {
-  if (!getAIConfig()) return null;
+  if (!(await getAIConfig())) return null;
 
   const system =
     "You are a meticulous web link analyzer. Reply with strict JSON only matching the schema: " +

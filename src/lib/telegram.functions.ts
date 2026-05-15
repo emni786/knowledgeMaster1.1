@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { getRequestHost } from "@tanstack/react-start/server";
+import { resolveRuntimeConfig } from "@/lib/runtime-config";
 
 const TG_API = "https://api.telegram.org";
 
@@ -14,8 +15,9 @@ const TG_API = "https://api.telegram.org";
  * deployed production URL). In production the request `Host` header is usually
  * enough.
  */
-function publicWebhookUrl(host: string, botId: string): string {
-  const override = process.env.PUBLIC_APP_URL?.replace(/\/$/, "");
+async function publicWebhookUrl(host: string, botId: string): Promise<string> {
+  const cfg = await resolveRuntimeConfig();
+  const override = cfg.publicAppUrl?.replace(/\/$/, "");
   if (override) {
     return `${override}/api/public/telegram/webhook/${botId}`;
   }
@@ -27,7 +29,7 @@ function publicWebhookUrl(host: string, botId: string): string {
     !host.startsWith("0.0.0.0");
   if (!isPublicHost) {
     throw new Error(
-      "PUBLIC_APP_URL is not set. Telegram needs a public HTTPS URL to deliver webhook updates. Set PUBLIC_APP_URL to your tunnel or deployed origin (e.g. https://your-app.example.com).",
+      "PUBLIC_APP_URL is not configured. Telegram needs a public HTTPS URL to deliver webhook updates. Set PUBLIC_APP_URL in your env or save it from the admin Settings page (e.g. https://your-app.example.com).",
     );
   }
   return `https://${host}/api/public/telegram/webhook/${botId}`;
@@ -95,7 +97,7 @@ export const addTelegramBot = createServerFn({ method: "POST" })
 
     // Register webhook with Telegram
     const host = getRequestHost();
-    const url = publicWebhookUrl(host, created.id);
+    const url = await publicWebhookUrl(host, created.id);
     const setRes = await fetch(`${TG_API}/bot${data.bot_token}/setWebhook`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -131,7 +133,7 @@ export const testTelegramWebhook = createServerFn({ method: "POST" })
     const bot = row as unknown as { bot_token: string; webhook_secret: string; id: string };
 
     const host = getRequestHost();
-    const expectedUrl = publicWebhookUrl(host, bot.id);
+    const expectedUrl = await publicWebhookUrl(host, bot.id);
 
     const infoRes = await fetch(`${TG_API}/bot${bot.bot_token}/getWebhookInfo`);
     const infoJson = (await infoRes.json()) as {
