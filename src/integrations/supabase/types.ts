@@ -38,6 +38,36 @@ export type Database = {
         }
         Relationships: []
       }
+      api_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          last_used_at: string | null
+          owner_id: string
+          token_hash: string
+          token_prefix: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label?: string
+          last_used_at?: string | null
+          owner_id: string
+          token_hash: string
+          token_prefix: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          last_used_at?: string | null
+          owner_id?: string
+          token_hash?: string
+          token_prefix?: string
+        }
+        Relationships: []
+      }
       collection_links: {
         Row: {
           added_at: string
