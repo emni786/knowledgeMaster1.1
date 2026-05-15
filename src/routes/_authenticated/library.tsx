@@ -665,6 +665,7 @@ const CenterToolbar = (() => {
   selectMode: boolean; setSelectMode: (v: boolean) => void;
   onAdd: (raw: string) => void; addPending: boolean;
   onSmartSearch: () => void; onImport: () => void; onRefresh: () => void;
+  onOpenFilters: () => void;
 } & React.RefAttributes<HTMLInputElement>>;
 
 function AddLinkInput({ onAdd, loading }: { onAdd: (raw: string) => void; loading: boolean }) {
