@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Wordmark, Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { PageTabs } from "@/components/PageTabs";
@@ -261,6 +262,41 @@ function LibraryPage() {
     addMut.mutate(urls);
   };
 
+  const handleExport = (format: "json" | "csv" | "txt") => {
+    const rows = visible;
+    if (!rows.length) return toast.error("Nothing to export");
+    let blob: Blob;
+    let filename: string;
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (format === "json") {
+      blob = new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" });
+      filename = `knowledgemaster-${stamp}.json`;
+    } else if (format === "csv") {
+      const esc = (v: unknown) => {
+        const s = v == null ? "" : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const header = ["url", "title", "domain", "content_type", "status", "tags", "pinned", "summary", "created_at"];
+      const lines = [header.join(",")];
+      for (const l of rows) {
+        lines.push([
+          l.url, l.title ?? "", l.domain ?? "", l.content_type, l.status,
+          (l.tags ?? []).join("|"), l.pinned, l.summary ?? "", l.created_at,
+        ].map(esc).join(","));
+      }
+      blob = new Blob([lines.join("\n")], { type: "text/csv" });
+      filename = `knowledgemaster-${stamp}.csv`;
+    } else {
+      blob = new Blob([rows.map((l) => l.url).join("\n")], { type: "text/plain" });
+      filename = `knowledgemaster-${stamp}.txt`;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${rows.length} links as ${format.toUpperCase()}`);
+  };
+
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -419,6 +455,7 @@ function LibraryPage() {
               addPending={addMut.isPending}
               onSmartSearch={() => setSmartOpen(true)}
               onImport={() => setImportOpen(true)}
+              onExport={handleExport}
               onRefresh={() => linksQuery.refetch()}
               onOpenFilters={() => setFiltersOpen(true)}
             />
@@ -572,14 +609,16 @@ const CenterToolbar = (() => {
   const Inner = (
     {
       filters, setFilters, view, setView, showNumbers, setShowNumbers,
-      selectMode, setSelectMode, onAdd, addPending, onSmartSearch, onRefresh, onOpenFilters,
+      selectMode, setSelectMode, onAdd, addPending, onSmartSearch, onImport, onExport, onRefresh, onOpenFilters,
     }: {
       filters: FilterState; setFilters: (f: FilterState) => void;
       view: "list" | "grid"; setView: (v: "list" | "grid") => void;
       showNumbers: boolean; setShowNumbers: (v: boolean) => void;
       selectMode: boolean; setSelectMode: (v: boolean) => void;
       onAdd: (raw: string) => void; addPending: boolean;
-      onSmartSearch: () => void; onImport: () => void; onRefresh: () => void;
+      onSmartSearch: () => void; onImport: () => void;
+      onExport: (format: "json" | "csv" | "txt") => void;
+      onRefresh: () => void;
       onOpenFilters: () => void;
     },
     ref: React.Ref<HTMLInputElement>,
@@ -668,6 +707,31 @@ const CenterToolbar = (() => {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-primary/10 hover:text-primary" onClick={onImport}>
+                  <Upload className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Import</TooltipContent>
+            </Tooltip>
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-primary/10 hover:text-primary">
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Export</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="font-mono text-xs">
+                <DropdownMenuItem onClick={() => onExport("json")}>Export as JSON</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onExport("csv")}>Export as CSV</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onExport("txt")}>Export as TXT (URLs)</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-primary/10 hover:text-primary" onClick={onOpenFilters}>
                   <Filter className="h-4 w-4" />
                 </Button>
@@ -690,7 +754,9 @@ const CenterToolbar = (() => {
   showNumbers: boolean; setShowNumbers: (v: boolean) => void;
   selectMode: boolean; setSelectMode: (v: boolean) => void;
   onAdd: (raw: string) => void; addPending: boolean;
-  onSmartSearch: () => void; onImport: () => void; onRefresh: () => void;
+  onSmartSearch: () => void; onImport: () => void;
+  onExport: (format: "json" | "csv" | "txt") => void;
+  onRefresh: () => void;
   onOpenFilters: () => void;
 } & React.RefAttributes<HTMLInputElement>>;
 
@@ -1167,13 +1233,69 @@ function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
 
 function ImportDialog({ open, onOpenChange, onImport }: { open: boolean; onOpenChange: (v: boolean) => void; onImport: (raw: string) => void }) {
   const [text, setText] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const extractUrls = (raw: string): string[] => {
+    const matches = raw.match(/https?:\/\/[^\s"'<>)]+/g) ?? [];
+    return Array.from(new Set(matches));
+  };
+
+  const handleFile = async (file: File) => {
+    const content = await file.text();
+    let urls: string[] = [];
+    const name = file.name.toLowerCase();
+    if (name.endsWith(".json")) {
+      try {
+        const parsed = JSON.parse(content);
+        const arr = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.links) ? parsed.links : [];
+        urls = arr
+          .map((x: unknown) => (typeof x === "string" ? x : (x as { url?: string })?.url ?? ""))
+          .filter((s: string) => /^https?:\/\//.test(s));
+      } catch {
+        urls = extractUrls(content);
+      }
+    } else {
+      // txt, csv, html bookmarks — extract any URL pattern
+      urls = extractUrls(content);
+    }
+    if (!urls.length) return toast.error("No URLs found in file");
+    setText((prev) => (prev ? prev + "\n" : "") + urls.join("\n"));
+    toast.success(`Loaded ${urls.length} URLs from ${file.name}`);
+  };
+
+  const count = useMemo(() => extractUrls(text).length, [text]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader><DialogTitle className="font-mono">Import links</DialogTitle><DialogDescription>One URL per line.</DialogDescription></DialogHeader>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} className="w-full h-40 rounded-xl border border-border bg-background p-3 font-mono text-xs" />
-        <DialogFooter>
-          <Button onClick={() => { onImport(text); setText(""); onOpenChange(false); }}>Import</Button>
+        <DialogHeader>
+          <DialogTitle className="font-mono">Import links</DialogTitle>
+          <DialogDescription>Paste URLs or upload a file (.txt, .csv, .json, .html bookmarks).</DialogDescription>
+        </DialogHeader>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".txt,.csv,.json,.html,.htm,text/plain,text/csv,application/json,text/html"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
+        />
+        <Button variant="outline" size="sm" className="font-mono text-xs w-fit" onClick={() => fileRef.current?.click()}>
+          <Upload className="h-3.5 w-3.5 mr-2" />Choose file
+        </Button>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="https://example.com/article&#10;https://github.com/user/repo"
+          className="w-full h-40 rounded-xl border border-border bg-background p-3 font-mono text-xs"
+        />
+        <DialogFooter className="items-center sm:justify-between">
+          <span className="font-mono text-[11px] text-muted-foreground">{count} URL{count === 1 ? "" : "s"} detected</span>
+          <Button
+            disabled={!count}
+            onClick={() => { onImport(text); setText(""); onOpenChange(false); }}
+          >
+            Import {count > 0 && `(${count})`}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
