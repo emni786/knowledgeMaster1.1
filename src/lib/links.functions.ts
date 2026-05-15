@@ -186,7 +186,7 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
     if (insertErr) throw new Error(insertErr.message);
 
     // 2) Analyze in parallel (bounded by input cap of 20)
-    await Promise.all(
+    const results = await Promise.all(
       (inserted ?? []).map(async (row) => {
         try {
           const { analysis } = await analyzeOne(row.url);
@@ -203,6 +203,7 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
               updated_at: new Date().toISOString(),
             })
             .eq("id", row.id);
+          return { url: row.url, title: analysis.title, summary: analysis.summary, ok: true };
         } catch (e) {
           await supabase
             .from("links")
@@ -212,9 +213,41 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
               updated_at: new Date().toISOString(),
             })
             .eq("id", row.id);
+          return { url: row.url, title: null, summary: null, ok: false };
         }
       })
     );
+
+    // 3) Forward saved links to user's Telegram bot(s) — fire and forget
+    try {
+      const { data: bots } = await supabase
+        .from("telegram_bots")
+        .select("bot_token, default_chat_id, active")
+        .eq("active", true);
+      const targets = ((bots ?? []) as Array<{ bot_token: string; default_chat_id: number | null; active: boolean }>)
+        .filter((b) => b.default_chat_id);
+      if (targets.length) {
+        const successes = results.filter((r) => r.ok);
+        await Promise.all(
+          targets.flatMap((b) =>
+            successes.map((r) => {
+              const text = `🔖 Saved to your library\n${r.title ? r.title + "\n" : ""}${r.url}${r.summary ? `\n\n${r.summary}` : ""}`;
+              return fetch(`https://api.telegram.org/bot${b.bot_token}/sendMessage`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  chat_id: b.default_chat_id,
+                  text: text.slice(0, 4000),
+                  disable_web_page_preview: false,
+                }),
+              }).catch(() => undefined);
+            })
+          )
+        );
+      }
+    } catch {
+      // Non-fatal: forwarding failure shouldn't break link save
+    }
 
     return { count: inserted?.length ?? 0 };
   });
