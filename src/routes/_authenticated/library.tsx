@@ -1233,13 +1233,69 @@ function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
 
 function ImportDialog({ open, onOpenChange, onImport }: { open: boolean; onOpenChange: (v: boolean) => void; onImport: (raw: string) => void }) {
   const [text, setText] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const extractUrls = (raw: string): string[] => {
+    const matches = raw.match(/https?:\/\/[^\s"'<>)]+/g) ?? [];
+    return Array.from(new Set(matches));
+  };
+
+  const handleFile = async (file: File) => {
+    const content = await file.text();
+    let urls: string[] = [];
+    const name = file.name.toLowerCase();
+    if (name.endsWith(".json")) {
+      try {
+        const parsed = JSON.parse(content);
+        const arr = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.links) ? parsed.links : [];
+        urls = arr
+          .map((x: unknown) => (typeof x === "string" ? x : (x as { url?: string })?.url ?? ""))
+          .filter((s: string) => /^https?:\/\//.test(s));
+      } catch {
+        urls = extractUrls(content);
+      }
+    } else {
+      // txt, csv, html bookmarks — extract any URL pattern
+      urls = extractUrls(content);
+    }
+    if (!urls.length) return toast.error("No URLs found in file");
+    setText((prev) => (prev ? prev + "\n" : "") + urls.join("\n"));
+    toast.success(`Loaded ${urls.length} URLs from ${file.name}`);
+  };
+
+  const count = useMemo(() => extractUrls(text).length, [text]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader><DialogTitle className="font-mono">Import links</DialogTitle><DialogDescription>One URL per line.</DialogDescription></DialogHeader>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} className="w-full h-40 rounded-xl border border-border bg-background p-3 font-mono text-xs" />
-        <DialogFooter>
-          <Button onClick={() => { onImport(text); setText(""); onOpenChange(false); }}>Import</Button>
+        <DialogHeader>
+          <DialogTitle className="font-mono">Import links</DialogTitle>
+          <DialogDescription>Paste URLs or upload a file (.txt, .csv, .json, .html bookmarks).</DialogDescription>
+        </DialogHeader>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".txt,.csv,.json,.html,.htm,text/plain,text/csv,application/json,text/html"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
+        />
+        <Button variant="outline" size="sm" className="font-mono text-xs w-fit" onClick={() => fileRef.current?.click()}>
+          <Upload className="h-3.5 w-3.5 mr-2" />Choose file
+        </Button>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="https://example.com/article&#10;https://github.com/user/repo"
+          className="w-full h-40 rounded-xl border border-border bg-background p-3 font-mono text-xs"
+        />
+        <DialogFooter className="items-center sm:justify-between">
+          <span className="font-mono text-[11px] text-muted-foreground">{count} URL{count === 1 ? "" : "s"} detected</span>
+          <Button
+            disabled={!count}
+            onClick={() => { onImport(text); setText(""); onOpenChange(false); }}
+          >
+            Import {count > 0 && `(${count})`}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
