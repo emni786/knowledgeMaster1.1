@@ -400,7 +400,7 @@ type CosmosStats = {
   groups: { name: string; color: string; count: number }[];
 };
 
-function computeCosmosStats(links: ReturnType<typeof useMemo<any>>, clusters: boolean): CosmosStats {
+function computeCosmosStats(links: any[], clusters: boolean): CosmosStats {
   const tagCount = new Map<string, number>();
   const cooc = new Map<string, number>();
   (links as any[]).forEach((l) => {
