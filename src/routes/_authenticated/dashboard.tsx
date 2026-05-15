@@ -12,7 +12,7 @@ import {
 } from "@/lib/rss.functions";
 import {
   Activity, Link2, Pin, AlertTriangle, TrendingUp, Sparkles, Loader2,
-  Rss, Plus, RefreshCw, Trash2, AlertCircle,
+  Rss, Plus, RefreshCw, Trash2, AlertCircle, Boxes, Hash, Network,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +68,9 @@ function DashboardPage() {
   }, [links]);
 
   const activeLinks = useMemo(() => links.filter((l) => !l.deleted_at), [links]);
+  const [clusters, setClusters] = useState(false);
+
+  const cosmosStats = useMemo(() => computeCosmosStats(activeLinks, clusters), [activeLinks, clusters]);
 
   const qc = useQueryClient();
   useEffect(() => {
@@ -98,9 +101,24 @@ function DashboardPage() {
           title="Knowledge graph"
           subtitle="Each node is a topic from your library. Edges connect topics that appear on the same link. Click a node to see its links."
         >
-          <AnalyzeTopicsButton />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setClusters((v) => !v)}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                clusters
+                  ? "border-cyan-400/50 bg-cyan-400/10 text-cyan-300"
+                  : "border-border/60 hover:border-primary/40 text-muted-foreground hover:text-foreground"
+              }`}
+              title="Recolor planets by connected component"
+            >
+              <Boxes className="h-3.5 w-3.5" />
+              Clusters {clusters ? "on" : "off"}
+            </button>
+            <AnalyzeTopicsButton />
+          </div>
         </Header>
-        <TopicGraph3D links={activeLinks} />
+        <TopicGraph3D links={activeLinks} clusters={clusters} onClustersChange={setClusters} />
+        <CosmosStatsPanel stats={cosmosStats} clusters={clusters} />
       </section>
 
       <section className="space-y-3">
@@ -358,3 +376,184 @@ function RssFeedsSection() {
   );
 }
 
+
+// ---------- Cosmos Stats ----------
+
+const PLANET_PALETTE = [
+  { name: "Saturn Gold",    color: "#fbbf24" },
+  { name: "Mars Red",       color: "#ef4444" },
+  { name: "Pluto Purple",   color: "#a78bfa" },
+  { name: "Uranus Cyan",    color: "#22d3ee" },
+  { name: "Neptune Blue",   color: "#3b82f6" },
+  { name: "Earth Green",    color: "#34d399" },
+  { name: "Jupiter Orange", color: "#fb923c" },
+  { name: "Venus Pink",     color: "#f472b6" },
+];
+
+type CosmosTopic = { id: string; count: number; group: number; color: string; groupName: string };
+type CosmosStats = {
+  topics: number;
+  edges: number;
+  mentions: number;
+  density: number;
+  topTopics: CosmosTopic[];
+  groups: { name: string; color: string; count: number }[];
+};
+
+function computeCosmosStats(links: ReturnType<typeof useMemo<any>>, clusters: boolean): CosmosStats {
+  const tagCount = new Map<string, number>();
+  const cooc = new Map<string, number>();
+  (links as any[]).forEach((l) => {
+    const tags = ((l.tags ?? []) as string[]).filter(Boolean);
+    tags.forEach((t) => tagCount.set(t, (tagCount.get(t) ?? 0) + 1));
+    const u = Array.from(new Set(tags));
+    for (let i = 0; i < u.length; i++) {
+      for (let j = i + 1; j < u.length; j++) {
+        const [a, b] = [u[i], u[j]].sort();
+        cooc.set(`${a}\u0000${b}`, (cooc.get(`${a}\u0000${b}`) ?? 0) + 1);
+      }
+    }
+  });
+
+  const top = Array.from(tagCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 60);
+  const allowed = new Set(top.map(([t]) => t));
+
+  const adjacency = new Map<string, Set<string>>();
+  let edges = 0;
+  cooc.forEach((_, k) => {
+    const [a, b] = k.split("\u0000");
+    if (!allowed.has(a) || !allowed.has(b)) return;
+    edges++;
+    if (!adjacency.has(a)) adjacency.set(a, new Set());
+    if (!adjacency.has(b)) adjacency.set(b, new Set());
+    adjacency.get(a)!.add(b);
+    adjacency.get(b)!.add(a);
+  });
+
+  const hashGroup = (s: string) => {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h % PLANET_PALETTE.length;
+  };
+
+  let groupOf: (id: string) => number;
+  if (clusters) {
+    const seen = new Map<string, number>();
+    let c = 0;
+    top.forEach(([id]) => {
+      if (seen.has(id)) return;
+      const stack = [id];
+      while (stack.length) {
+        const cur = stack.pop()!;
+        if (seen.has(cur)) continue;
+        seen.set(cur, c);
+        adjacency.get(cur)?.forEach((n) => { if (!seen.has(n)) stack.push(n); });
+      }
+      c++;
+    });
+    groupOf = (id) => (seen.get(id) ?? 0) % PLANET_PALETTE.length;
+  } else {
+    groupOf = hashGroup;
+  }
+
+  const topics: CosmosTopic[] = top.map(([id, count]) => {
+    const g = groupOf(id);
+    return { id, count, group: g, color: PLANET_PALETTE[g].color, groupName: PLANET_PALETTE[g].name };
+  });
+
+  const groupCount = new Map<number, number>();
+  topics.forEach((t) => groupCount.set(t.group, (groupCount.get(t.group) ?? 0) + 1));
+  const groups = Array.from(groupCount.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([g, count]) => ({ name: PLANET_PALETTE[g].name, color: PLANET_PALETTE[g].color, count }));
+
+  const mentions = topics.reduce((s, t) => s + t.count, 0);
+  const maxEdges = (topics.length * (topics.length - 1)) / 2;
+  const density = maxEdges ? edges / maxEdges : 0;
+
+  return { topics: topics.length, edges, mentions, density, topTopics: topics.slice(0, 8), groups };
+}
+
+function CosmosStatsPanel({ stats, clusters }: { stats: CosmosStats; clusters: boolean }) {
+  const maxCount = Math.max(1, ...stats.topTopics.map((t) => t.count));
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card/40 p-5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+          <Sparkles className="h-3.5 w-3.5 text-amber-300" /> Cosmos stats
+        </div>
+        <span className={`text-[10px] font-mono uppercase tracking-widest ${clusters ? "text-cyan-300" : "text-muted-foreground"}`}>
+          {clusters ? "Clusters mode" : "Tag groups"}
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <MiniStat icon={Hash} label="Planets" value={stats.topics} />
+        <MiniStat icon={Network} label="Edges" value={stats.edges} />
+        <MiniStat icon={Activity} label="Mentions" value={stats.mentions} />
+        <MiniStat icon={Boxes} label="Density" value={`${(stats.density * 100).toFixed(1)}%`} />
+      </div>
+
+      <div className="mt-5 grid md:grid-cols-2 gap-5">
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+            Top topics
+          </div>
+          {stats.topTopics.length === 0 ? (
+            <div className="text-sm text-muted-foreground py-3">No tagged topics yet.</div>
+          ) : (
+            <ul className="space-y-1.5">
+              {stats.topTopics.map((t) => (
+                <li key={t.id} className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: t.color }} />
+                  <span className="font-mono text-sm truncate min-w-0 flex-1">{t.id}</span>
+                  <div className="h-1.5 w-24 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${(t.count / maxCount) * 100}%`, background: t.color }}
+                    />
+                  </div>
+                  <span className="tabular-nums text-xs text-muted-foreground w-8 text-right">{t.count}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+            {clusters ? "Clusters" : "Tag groups"}
+          </div>
+          {stats.groups.length === 0 ? (
+            <div className="text-sm text-muted-foreground py-3">—</div>
+          ) : (
+            <ul className="space-y-1.5">
+              {stats.groups.map((g, i) => (
+                <li key={`${g.name}-${i}`} className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: g.color }} />
+                  <span className="text-sm truncate min-w-0 flex-1">
+                    {clusters ? `Cluster ${i + 1}` : g.name}
+                  </span>
+                  <span className="tabular-nums text-xs text-muted-foreground">
+                    {g.count} {g.count === 1 ? "planet" : "planets"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ icon: Icon, label, value }: { icon: typeof Activity; label: string; value: number | string }) {
+  return (
+    <div className="rounded-xl border border-border/40 bg-background/40 p-3">
+      <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+        <Icon className="h-3 w-3" /> {label}
+      </div>
+      <div className="mt-1 font-display text-2xl font-semibold tabular-nums">{value}</div>
+    </div>
+  );
+}

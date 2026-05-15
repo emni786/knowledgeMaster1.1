@@ -93,7 +93,15 @@ function buildPlanetObject(node: GNode, highlighted: boolean) {
   return group;
 }
 
-export function TopicGraph3D({ links }: { links: LinkRow[] }) {
+export function TopicGraph3D({
+  links,
+  clusters,
+  onClustersChange,
+}: {
+  links: LinkRow[];
+  clusters?: boolean;
+  onClustersChange?: (v: boolean) => void;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fgRef = useRef<any>(null);
   const [size, setSize] = useState({ w: 800, h: 620 });
@@ -103,7 +111,12 @@ export function TopicGraph3D({ links }: { links: LinkRow[] }) {
   const [days, setDays] = useState<number>(365); // time travel window
   const [pathA, setPathA] = useState<string>("");
   const [pathB, setPathB] = useState<string>("");
-  const [showClusters, setShowClusters] = useState(false);
+  const [internalClusters, setInternalClusters] = useState(false);
+  const showClusters = clusters ?? internalClusters;
+  const setShowClusters = (v: boolean) => {
+    if (onClustersChange) onClustersChange(v);
+    else setInternalClusters(v);
+  };
   const [hoverHighlight, setHoverHighlight] = useState<Set<string>>(new Set());
 
   useEffect(() => setMounted(true), []);
@@ -515,7 +528,7 @@ export function TopicGraph3D({ links }: { links: LinkRow[] }) {
 
           {/* Clusters */}
           <button
-            onClick={() => setShowClusters((v) => !v)}
+            onClick={() => setShowClusters(!showClusters)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-white/10 ${showClusters ? "bg-white/10 text-cyan-300" : ""}`}
           >
             <Boxes className="h-3.5 w-3.5" /> Clusters
