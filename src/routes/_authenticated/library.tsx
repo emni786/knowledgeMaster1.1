@@ -372,7 +372,7 @@ function LibraryPage() {
               />
             )}
 
-            <div className="mt-auto p-3 border-t border-border/50 flex items-center gap-1">
+            <div className={`mt-auto p-3 border-t border-border/50 ${collapsed ? "flex flex-col items-center gap-1" : "flex items-center gap-1"}`}>
               <ThemeToggle />
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -380,20 +380,25 @@ function LibraryPage() {
                     <Keyboard className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Shortcuts (?)</TooltipContent>
+                <TooltipContent side="right">Shortcuts (?)</TooltipContent>
               </Tooltip>
-              <Link to="/settings">
-                <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-primary/10 hover:text-primary">
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </Link>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-destructive/10 hover:text-destructive ml-auto" onClick={handleSignOut}>
+                  <Link to="/settings">
+                    <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-primary/10 hover:text-primary">
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent side="right">Settings</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className={`h-9 w-9 hover:bg-destructive/10 hover:text-destructive ${collapsed ? "" : "ml-auto"}`} onClick={handleSignOut}>
                     <LogOut className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Sign out</TooltipContent>
+                <TooltipContent side="right">Sign out</TooltipContent>
               </Tooltip>
             </div>
           </aside>
