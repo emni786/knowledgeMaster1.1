@@ -188,6 +188,51 @@ export type Database = {
         }
         Relationships: []
       }
+      rss_feeds: {
+        Row: {
+          active: boolean
+          created_at: string
+          domain: string | null
+          id: string
+          items_imported: number
+          last_error: string | null
+          last_fetched_at: string | null
+          owner_id: string
+          site_url: string | null
+          title: string | null
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          domain?: string | null
+          id?: string
+          items_imported?: number
+          last_error?: string | null
+          last_fetched_at?: string | null
+          owner_id: string
+          site_url?: string | null
+          title?: string | null
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          domain?: string | null
+          id?: string
+          items_imported?: number
+          last_error?: string | null
+          last_fetched_at?: string | null
+          owner_id?: string
+          site_url?: string | null
+          title?: string | null
+          updated_at?: string
+          url?: string
+        }
+        Relationships: []
+      }
       telegram_bots: {
         Row: {
           active: boolean
