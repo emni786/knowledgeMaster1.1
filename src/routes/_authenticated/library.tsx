@@ -344,81 +344,10 @@ function LibraryPage() {
             </nav>
 
             {!collapsed && (
-              <div className="px-4 py-3 border-t border-border/50">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Stats</span>
-                  <button
-                    onClick={() => linksQuery.refetch()}
-                    className="text-muted-foreground hover:text-primary"
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <StatCard label="All" value={stats.all} active={!filters.showDeleted && filters.status === "all"} onClick={() => setFilters({ ...filters, status: "all", showDeleted: false, showDuplicates: false })} />
-                  <StatCard label="Ready" value={stats.ready} tone="primary" onClick={() => setFilters({ ...filters, status: "ready", showDeleted: false })} />
-                  <StatCard label="Pending" value={stats.pending} tone="muted" onClick={() => setFilters({ ...filters, status: "pending", showDeleted: false })} />
-                  <StatCard label="Failed" value={stats.failed} tone="destructive" onClick={() => setFilters({ ...filters, status: "failed", showDeleted: false })} />
-                  <StatCard label="Dupes" value={stats.duplicates} onClick={() => setFilters({ ...filters, showDuplicates: !filters.showDuplicates })} />
-                  <StatCard label="Trash" value={stats.deleted} onClick={() => { setRecycleOpen(true); }} />
-                </div>
-
-                <div className="mt-3 pt-3 border-t border-border/50">
-                  <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">By type</div>
-                  <div className="space-y-0.5">
-                    {(Object.keys(TYPE_ICON) as ContentType[])
-                      .filter((t) => stats.byType[t] > 0)
-                      .sort((a, b) => stats.byType[b] - stats.byType[a])
-                      .map((t) => {
-                        const TIcon = TYPE_ICON[t];
-                        const isActive = filters.contentType === t;
-                        return (
-                          <button
-                            key={t}
-                            onClick={() => setFilters({ ...filters, contentType: isActive ? "all" : t, showDeleted: false })}
-                            className={`w-full flex items-center gap-2 px-1.5 py-1 rounded-md text-xs transition ${isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"}`}
-                          >
-                            <TIcon className="h-3.5 w-3.5 text-primary/70" />
-                            <span className="capitalize flex-1 text-left">{t}</span>
-                            <span className="font-mono text-[10px] tabular-nums">{stats.byType[t]}</span>
-                          </button>
-                        );
-                      })}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!collapsed && (
-              <div className="px-4 py-3 border-t border-border/50 space-y-2">
-                <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Filters</div>
-                <Select value={filters.contentType} onValueChange={(v) => setFilters({ ...filters, contentType: v as FilterState["contentType"] })}>
-                  <SelectTrigger className="h-8 font-mono text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All types</SelectItem>
-                    <SelectItem value="article">Article</SelectItem>
-                    <SelectItem value="video">Video</SelectItem>
-                    <SelectItem value="repo">Repo</SelectItem>
-                    <SelectItem value="docs">Docs</SelectItem>
-                    <SelectItem value="tool">Tool</SelectItem>
-                    <SelectItem value="thread">Thread</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={filters.sort} onValueChange={(v) => setFilters({ ...filters, sort: v as FilterState["sort"] })}>
-                  <SelectTrigger className="h-8 font-mono text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="newest">Newest first</SelectItem>
-                    <SelectItem value="oldest">Oldest first</SelectItem>
-                    <SelectItem value="title-asc">Title A→Z</SelectItem>
-                    <SelectItem value="title-desc">Title Z→A</SelectItem>
-                    <SelectItem value="domain-asc">Domain A→Z</SelectItem>
-                  </SelectContent>
-                </Select>
-                <label className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-muted-foreground">Pinned only</span>
-                  <Switch checked={filters.pinnedOnly} onCheckedChange={(v) => setFilters({ ...filters, pinnedOnly: v })} />
-                </label>
+              <div className="px-4 py-3 border-t border-border/50 grid grid-cols-3 gap-1.5">
+                <MiniStatPill label="All" value={stats.all} />
+                <MiniStatPill label="Pin" value={allLinks.filter((l) => !l.deleted_at && l.pinned).length} />
+                <MiniStatPill label="Fail" value={stats.failed} tone={stats.failed ? "destructive" : "default"} />
               </div>
             )}
 
