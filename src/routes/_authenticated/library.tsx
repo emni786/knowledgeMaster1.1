@@ -106,7 +106,23 @@ function LibraryPage() {
   const [smartOpen, setSmartOpen] = useState(false);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  type LibraryTab = "all" | "pinned" | "failed" | "trash";
+  const tab: LibraryTab = filters.showDeleted
+    ? "trash"
+    : filters.status === "failed"
+      ? "failed"
+      : filters.pinnedOnly
+        ? "pinned"
+        : "all";
+  const setTab = (t: LibraryTab) => {
+    if (t === "trash") setFilters({ ...filters, showDeleted: true, pinnedOnly: false, status: "all", showDuplicates: false });
+    else if (t === "pinned") setFilters({ ...filters, showDeleted: false, pinnedOnly: true, status: "all", showDuplicates: false });
+    else if (t === "failed") setFilters({ ...filters, showDeleted: false, pinnedOnly: false, status: "failed", showDuplicates: false });
+    else setFilters({ ...filters, showDeleted: false, pinnedOnly: false, status: "all", showDuplicates: false });
+  };
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
