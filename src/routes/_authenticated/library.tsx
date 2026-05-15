@@ -24,7 +24,7 @@ import { Wordmark, Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { PageTabs } from "@/components/PageTabs";
 import { useLocalStorage } from "@/lib/local-storage";
-import { faviconFor, getDomain } from "@/lib/url";
+import { faviconFor, getDomain, normalizeUrl } from "@/lib/url";
 import {
   fetchLinks, addLinks, updateLink, softDeleteLink, softDeleteMany,
   togglePin, retryAnalysis, restoreLink, permanentlyDelete, emptyTrash, bulkAddTag,
@@ -259,7 +259,28 @@ function LibraryPage() {
       raw.split(/[\s,]+/).map((s) => s.trim()).filter((s) => /^https?:\/\//.test(s))
     ));
     if (!urls.length) return toast.error("Enter one or more valid URLs");
-    addMut.mutate(urls);
+    const existing = new Set(
+      allLinks.flatMap((l) => [l.normalized_url, l.url].filter(Boolean) as string[])
+    );
+    const seen = new Set<string>();
+    const fresh: string[] = [];
+    const dupes: string[] = [];
+    for (const u of urls) {
+      const key = normalizeUrl(u);
+      if (existing.has(key) || existing.has(u) || seen.has(key)) {
+        dupes.push(u);
+      } else {
+        seen.add(key);
+        fresh.push(u);
+      }
+    }
+    if (dupes.length) {
+      toast.message(`Skipped ${dupes.length} duplicate${dupes.length === 1 ? "" : "s"}`, {
+        description: dupes.slice(0, 3).map((d) => getDomain(d) || d).join(", ") + (dupes.length > 3 ? "…" : ""),
+      });
+    }
+    if (!fresh.length) return;
+    addMut.mutate(fresh);
   };
 
   const handleExport = (format: "json" | "csv" | "txt") => {
