@@ -206,3 +206,155 @@ function AnalyzeTopicsButton() {
   );
 }
 
+function RssFeedsSection() {
+  const qc = useQueryClient();
+  const list = useServerFn(listRssFeeds);
+  const add = useServerFn(addRssFeed);
+  const del = useServerFn(deleteRssFeed);
+  const refresh = useServerFn(refreshRssFeed);
+  const toggle = useServerFn(toggleRssFeed);
+
+  const [url, setUrl] = useState("");
+
+  const feedsQuery = useQuery({
+    queryKey: ["rss-feeds"],
+    queryFn: () => list(),
+  });
+
+  const addMut = useMutation({
+    mutationFn: (u: string) => add({ data: { url: u } }),
+    onSuccess: (row) => {
+      setUrl("");
+      qc.invalidateQueries({ queryKey: ["rss-feeds"] });
+      if (row?.last_error) toast.warning(`Added with warning: ${row.last_error}`);
+      else toast.success("Feed added");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const refreshMut = useMutation({
+    mutationFn: (id: string) => refresh({ data: { id } }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["rss-feeds"] });
+      qc.invalidateQueries({ queryKey: ["links"] });
+      toast.success(`Imported ${res.imported} new, skipped ${res.skipped}`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const delMut = useMutation({
+    mutationFn: (id: string) => del({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["rss-feeds"] });
+      toast.success("Feed removed");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: (v: { id: string; active: boolean }) => toggle({ data: v }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["rss-feeds"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    const v = url.trim();
+    if (!v) return;
+    try {
+      new URL(v);
+    } catch {
+      toast.error("Enter a valid URL");
+      return;
+    }
+    addMut.mutate(v);
+  };
+
+  const feeds = feedsQuery.data ?? [];
+
+  return (
+    <section className="space-y-3">
+      <Header
+        icon={Rss}
+        title="RSS feeds"
+        subtitle="Subscribe to feeds and import new entries straight into your library."
+      />
+
+      <div className="rounded-2xl border border-border/60 bg-card/40 p-4 space-y-4">
+        <form onSubmit={handleAdd} className="flex gap-2">
+          <Input
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://example.com/feed.xml"
+            className="font-mono text-sm"
+            disabled={addMut.isPending}
+          />
+          <Button type="submit" disabled={addMut.isPending || !url.trim()}>
+            {addMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Add feed
+          </Button>
+        </form>
+
+        {feedsQuery.isLoading ? (
+          <div className="text-sm text-muted-foreground py-6 text-center">Loading feeds…</div>
+        ) : feeds.length === 0 ? (
+          <div className="text-sm text-muted-foreground py-6 text-center border border-dashed border-border/60 rounded-xl">
+            No feeds yet. Paste an RSS or Atom URL above to get started.
+          </div>
+        ) : (
+          <ul className="divide-y divide-border/50">
+            {feeds.map((f) => (
+              <li key={f.id} className="flex items-center gap-3 py-3">
+                <Rss className="h-4 w-4 text-primary/70 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">{f.title || f.domain || f.url}</div>
+                  <div className="text-[11px] font-mono text-muted-foreground truncate">{f.url}</div>
+                  <div className="mt-0.5 flex items-center gap-3 text-[11px] text-muted-foreground">
+                    <span>{f.items_imported} imported</span>
+                    {f.last_fetched_at && (
+                      <span>· refreshed {formatDistanceToNow(new Date(f.last_fetched_at), { addSuffix: true })}</span>
+                    )}
+                    {f.last_error && (
+                      <span className="flex items-center gap-1 text-destructive">
+                        <AlertCircle className="h-3 w-3" /> {f.last_error}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Switch
+                  checked={f.active}
+                  onCheckedChange={(v) => toggleMut.mutate({ id: f.id, active: v })}
+                  aria-label="Active"
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => refreshMut.mutate(f.id)}
+                  disabled={refreshMut.isPending && refreshMut.variables === f.id}
+                  title="Refresh now"
+                >
+                  {refreshMut.isPending && refreshMut.variables === f.id
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <RefreshCw className="h-4 w-4" />}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    if (confirm("Remove this feed?")) delMut.mutate(f.id);
+                  }}
+                  className="text-destructive hover:text-destructive"
+                  title="Delete"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
