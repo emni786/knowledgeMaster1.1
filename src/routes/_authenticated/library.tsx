@@ -554,7 +554,7 @@ const CenterToolbar = (() => {
   const Inner = (
     {
       filters, setFilters, view, setView, showNumbers, setShowNumbers,
-      selectMode, setSelectMode, onAdd, addPending, onSmartSearch, onRefresh,
+      selectMode, setSelectMode, onAdd, addPending, onSmartSearch, onRefresh, onOpenFilters,
     }: {
       filters: FilterState; setFilters: (f: FilterState) => void;
       view: "list" | "grid"; setView: (v: "list" | "grid") => void;
@@ -562,6 +562,7 @@ const CenterToolbar = (() => {
       selectMode: boolean; setSelectMode: (v: boolean) => void;
       onAdd: (raw: string) => void; addPending: boolean;
       onSmartSearch: () => void; onImport: () => void; onRefresh: () => void;
+      onOpenFilters: () => void;
     },
     ref: React.Ref<HTMLInputElement>,
   ) => {
