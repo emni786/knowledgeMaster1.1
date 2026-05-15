@@ -21,6 +21,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Wordmark, Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { PageTabs } from "@/components/PageTabs";
 import { useLocalStorage } from "@/lib/local-storage";
 import { faviconFor, getDomain } from "@/lib/url";
 import {
