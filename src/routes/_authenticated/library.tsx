@@ -318,11 +318,16 @@ function LibraryPage() {
         <div className={`hidden lg:grid ${collapsed ? "lg:grid-cols-[64px_1fr]" : "lg:grid-cols-[280px_1fr]"} min-h-screen transition-[grid-template-columns]`}>
           {/* Left sidebar */}
           <aside className="border-r border-border/50 bg-sidebar text-sidebar-foreground flex flex-col h-screen sticky top-0">
-            <div className="flex items-center justify-between p-4 border-b border-border/50">
-              <Wordmark collapsed={collapsed} />
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCollapsed(!collapsed)}>
-                {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-              </Button>
+            <div className={`flex items-center ${collapsed ? "justify-center" : "justify-between"} p-3 border-b border-border/50 min-h-[57px]`}>
+              {!collapsed && <Wordmark collapsed={false} />}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCollapsed(!collapsed)}>
+                    {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">{collapsed ? "Expand" : "Collapse"}</TooltipContent>
+              </Tooltip>
             </div>
             {!collapsed && user?.email && (
               <div className="px-4 py-2 text-[11px] font-mono text-muted-foreground truncate border-b border-border/50">
@@ -330,17 +335,25 @@ function LibraryPage() {
               </div>
             )}
             <nav className="px-2 py-3 space-y-0.5">
-              {NAV.map((item) => (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm hover:bg-primary/10 hover:text-primary transition-colors font-medium"
-                  activeProps={{ className: "bg-primary/10 text-primary" }}
-                >
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  {!collapsed && <span className="truncate">{item.label}</span>}
-                </Link>
-              ))}
+              {NAV.map((item) => {
+                const link = (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={`flex items-center ${collapsed ? "justify-center px-0" : "gap-3 px-3"} rounded-xl py-2 text-sm hover:bg-primary/10 hover:text-primary transition-colors font-medium`}
+                    activeProps={{ className: "bg-primary/10 text-primary" }}
+                  >
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                  </Link>
+                );
+                return collapsed ? (
+                  <Tooltip key={item.to}>
+                    <TooltipTrigger asChild>{link}</TooltipTrigger>
+                    <TooltipContent side="right">{item.label}</TooltipContent>
+                  </Tooltip>
+                ) : link;
+              })}
             </nav>
 
             {!collapsed && (
