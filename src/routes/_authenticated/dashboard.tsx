@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchLinks } from "@/lib/api/links";
 import { AppShell } from "@/components/AppShell";
 import { TopicGraph3D } from "@/components/TopicGraph3D";
+import { PageTabs } from "@/components/PageTabs";
 import { analyzeTopics } from "@/lib/insights.functions";
 import {
   listRssFeeds, addRssFeed, deleteRssFeed, refreshRssFeed, toggleRssFeed,
@@ -83,69 +84,93 @@ function DashboardPage() {
     return () => { supabase.removeChannel(channel); };
   }, [qc]);
 
+  const [tab, setTab] = useState<"overview" | "trends" | "feeds">("overview");
+
   return (
     <AppShell
       title="Dashboard"
       description="A live, atomic view of your knowledge graph — every domain is a nucleus, every tag an electron in orbit."
     >
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Stat icon={Link2} label="Total links" value={stats.total} loading={isLoading} />
-        <Stat icon={TrendingUp} label="Last 7 days" value={stats.recent} loading={isLoading} tone="primary" />
-        <Stat icon={Pin} label="Pinned" value={stats.pinned} loading={isLoading} />
-        <Stat icon={AlertTriangle} label="Failed" value={stats.failed} loading={isLoading} tone={stats.failed ? "destructive" : "muted"} />
-      </div>
+      <PageTabs
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: "overview", label: "Overview", icon: Activity },
+          { id: "trends", label: "Trends", icon: TrendingUp },
+          { id: "feeds", label: "Feeds", icon: Rss },
+        ]}
+      />
 
-      <section className="space-y-3">
-        <Header
-          icon={Activity}
-          title="Knowledge graph"
-          subtitle="Each node is a topic from your library. Edges connect topics that appear on the same link. Click a node to see its links."
-        >
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setClusters((v) => !v)}
-              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                clusters
-                  ? "border-cyan-400/50 bg-cyan-400/10 text-cyan-300"
-                  : "border-border/60 hover:border-primary/40 text-muted-foreground hover:text-foreground"
-              }`}
-              title="Recolor planets by connected component"
-            >
-              <Boxes className="h-3.5 w-3.5" />
-              Clusters {clusters ? "on" : "off"}
-            </button>
-            <AnalyzeTopicsButton />
+      {tab === "overview" && (
+        <div className="space-y-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Stat icon={Link2} label="Total links" value={stats.total} loading={isLoading} />
+            <Stat icon={TrendingUp} label="Last 7 days" value={stats.recent} loading={isLoading} tone="primary" />
+            <Stat icon={Pin} label="Pinned" value={stats.pinned} loading={isLoading} />
+            <Stat icon={AlertTriangle} label="Failed" value={stats.failed} loading={isLoading} tone={stats.failed ? "destructive" : "muted"} />
           </div>
-        </Header>
-        <TopicGraph3D links={activeLinks} clusters={clusters} onClustersChange={setClusters} />
-        <CosmosStatsPanel stats={cosmosStats} clusters={clusters} />
-      </section>
 
-      <section className="space-y-3">
-        <Header icon={TrendingUp} title="Ingest velocity" subtitle="Links saved per day over the last 14 days." />
-        <div className="rounded-2xl border border-border/60 bg-card/40 p-4 h-[280px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={series} margin={{ top: 10, right: 10, left: -16, bottom: 0 }}>
-              <defs>
-                <linearGradient id="velocity" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.5} />
-                  <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
-              <Tooltip
-                contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                labelStyle={{ color: "hsl(var(--foreground))" }}
-              />
-              <Area type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#velocity)" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <section className="space-y-3">
+            <Header
+              icon={Activity}
+              title="Knowledge graph"
+              subtitle="Each node is a topic from your library. Edges connect topics that appear on the same link. Click a node to see its links."
+            >
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setClusters((v) => !v)}
+                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                    clusters
+                      ? "border-cyan-400/50 bg-cyan-400/10 text-cyan-300"
+                      : "border-border/60 hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="Recolor planets by connected component"
+                >
+                  <Boxes className="h-3.5 w-3.5" />
+                  Clusters {clusters ? "on" : "off"}
+                </button>
+                <AnalyzeTopicsButton />
+              </div>
+            </Header>
+            <TopicGraph3D links={activeLinks} clusters={clusters} onClustersChange={setClusters} />
+          </section>
         </div>
-      </section>
+      )}
 
-      <RssFeedsSection />
+      {tab === "trends" && (
+        <div className="space-y-8">
+          <section className="space-y-3">
+            <Header icon={TrendingUp} title="Ingest velocity" subtitle="Links saved per day over the last 14 days." />
+            <div className="rounded-2xl border border-border/60 bg-card/40 p-4 h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={series} margin={{ top: 10, right: 10, left: -16, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="velocity" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.5} />
+                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                    labelStyle={{ color: "hsl(var(--foreground))" }}
+                  />
+                  <Area type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#velocity)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <Header icon={Sparkles} title="Cosmos breakdown" subtitle="Top topics, edges, and group composition for your current graph." />
+            <CosmosStatsPanel stats={cosmosStats} clusters={clusters} />
+          </section>
+        </div>
+      )}
+
+      {tab === "feeds" && <RssFeedsSection />}
     </AppShell>
   );
 }

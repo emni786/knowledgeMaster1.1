@@ -21,6 +21,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Wordmark, Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { PageTabs } from "@/components/PageTabs";
 import { useLocalStorage } from "@/lib/local-storage";
 import { faviconFor, getDomain } from "@/lib/url";
 import {
@@ -105,7 +106,23 @@ function LibraryPage() {
   const [smartOpen, setSmartOpen] = useState(false);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  type LibraryTab = "all" | "pinned" | "failed" | "trash";
+  const tab: LibraryTab = filters.showDeleted
+    ? "trash"
+    : filters.status === "failed"
+      ? "failed"
+      : filters.pinnedOnly
+        ? "pinned"
+        : "all";
+  const setTab = (t: LibraryTab) => {
+    if (t === "trash") setFilters({ ...filters, showDeleted: true, pinnedOnly: false, status: "all", showDuplicates: false });
+    else if (t === "pinned") setFilters({ ...filters, showDeleted: false, pinnedOnly: true, status: "all", showDuplicates: false });
+    else if (t === "failed") setFilters({ ...filters, showDeleted: false, pinnedOnly: false, status: "failed", showDuplicates: false });
+    else setFilters({ ...filters, showDeleted: false, pinnedOnly: false, status: "all", showDuplicates: false });
+  };
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
@@ -327,81 +344,10 @@ function LibraryPage() {
             </nav>
 
             {!collapsed && (
-              <div className="px-4 py-3 border-t border-border/50">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Stats</span>
-                  <button
-                    onClick={() => linksQuery.refetch()}
-                    className="text-muted-foreground hover:text-primary"
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <StatCard label="All" value={stats.all} active={!filters.showDeleted && filters.status === "all"} onClick={() => setFilters({ ...filters, status: "all", showDeleted: false, showDuplicates: false })} />
-                  <StatCard label="Ready" value={stats.ready} tone="primary" onClick={() => setFilters({ ...filters, status: "ready", showDeleted: false })} />
-                  <StatCard label="Pending" value={stats.pending} tone="muted" onClick={() => setFilters({ ...filters, status: "pending", showDeleted: false })} />
-                  <StatCard label="Failed" value={stats.failed} tone="destructive" onClick={() => setFilters({ ...filters, status: "failed", showDeleted: false })} />
-                  <StatCard label="Dupes" value={stats.duplicates} onClick={() => setFilters({ ...filters, showDuplicates: !filters.showDuplicates })} />
-                  <StatCard label="Trash" value={stats.deleted} onClick={() => { setRecycleOpen(true); }} />
-                </div>
-
-                <div className="mt-3 pt-3 border-t border-border/50">
-                  <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">By type</div>
-                  <div className="space-y-0.5">
-                    {(Object.keys(TYPE_ICON) as ContentType[])
-                      .filter((t) => stats.byType[t] > 0)
-                      .sort((a, b) => stats.byType[b] - stats.byType[a])
-                      .map((t) => {
-                        const TIcon = TYPE_ICON[t];
-                        const isActive = filters.contentType === t;
-                        return (
-                          <button
-                            key={t}
-                            onClick={() => setFilters({ ...filters, contentType: isActive ? "all" : t, showDeleted: false })}
-                            className={`w-full flex items-center gap-2 px-1.5 py-1 rounded-md text-xs transition ${isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"}`}
-                          >
-                            <TIcon className="h-3.5 w-3.5 text-primary/70" />
-                            <span className="capitalize flex-1 text-left">{t}</span>
-                            <span className="font-mono text-[10px] tabular-nums">{stats.byType[t]}</span>
-                          </button>
-                        );
-                      })}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!collapsed && (
-              <div className="px-4 py-3 border-t border-border/50 space-y-2">
-                <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Filters</div>
-                <Select value={filters.contentType} onValueChange={(v) => setFilters({ ...filters, contentType: v as FilterState["contentType"] })}>
-                  <SelectTrigger className="h-8 font-mono text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All types</SelectItem>
-                    <SelectItem value="article">Article</SelectItem>
-                    <SelectItem value="video">Video</SelectItem>
-                    <SelectItem value="repo">Repo</SelectItem>
-                    <SelectItem value="docs">Docs</SelectItem>
-                    <SelectItem value="tool">Tool</SelectItem>
-                    <SelectItem value="thread">Thread</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={filters.sort} onValueChange={(v) => setFilters({ ...filters, sort: v as FilterState["sort"] })}>
-                  <SelectTrigger className="h-8 font-mono text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="newest">Newest first</SelectItem>
-                    <SelectItem value="oldest">Oldest first</SelectItem>
-                    <SelectItem value="title-asc">Title A→Z</SelectItem>
-                    <SelectItem value="title-desc">Title Z→A</SelectItem>
-                    <SelectItem value="domain-asc">Domain A→Z</SelectItem>
-                  </SelectContent>
-                </Select>
-                <label className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-muted-foreground">Pinned only</span>
-                  <Switch checked={filters.pinnedOnly} onCheckedChange={(v) => setFilters({ ...filters, pinnedOnly: v })} />
-                </label>
+              <div className="px-4 py-3 border-t border-border/50 grid grid-cols-3 gap-1.5">
+                <MiniStatPill label="All" value={stats.all} />
+                <MiniStatPill label="Pin" value={allLinks.filter((l) => !l.deleted_at && l.pinned).length} />
+                <MiniStatPill label="Fail" value={stats.failed} tone={stats.failed ? "destructive" : "default"} />
               </div>
             )}
 
@@ -456,8 +402,21 @@ function LibraryPage() {
               onSmartSearch={() => setSmartOpen(true)}
               onImport={() => setImportOpen(true)}
               onRefresh={() => linksQuery.refetch()}
+              onOpenFilters={() => setFiltersOpen(true)}
             />
 
+            <div className="sticky top-[120px] z-10 bg-background/80 backdrop-blur border-b border-border/50 px-6">
+              <PageTabs
+                value={tab}
+                onChange={setTab}
+                tabs={[
+                  { id: "all", label: "All", icon: Inbox, badge: stats.all },
+                  { id: "pinned", label: "Pinned", icon: Pin, badge: allLinks.filter((l) => !l.deleted_at && l.pinned).length },
+                  { id: "failed", label: "Failed", icon: AlertCircle, badge: stats.failed },
+                  { id: "trash", label: "Trash", icon: Trash2, badge: stats.deleted },
+                ]}
+              />
+            </div>
             {selectMode && selectedIds.size > 0 && (
               <div className="sticky top-[120px] z-20 px-6 py-2 bg-primary/10 border-b border-primary/20 flex items-center gap-2 animate-fade-in">
                 <span className="font-mono text-xs">{selectedIds.size} selected</span>
@@ -595,7 +554,7 @@ const CenterToolbar = (() => {
   const Inner = (
     {
       filters, setFilters, view, setView, showNumbers, setShowNumbers,
-      selectMode, setSelectMode, onAdd, addPending, onSmartSearch, onRefresh,
+      selectMode, setSelectMode, onAdd, addPending, onSmartSearch, onRefresh, onOpenFilters,
     }: {
       filters: FilterState; setFilters: (f: FilterState) => void;
       view: "list" | "grid"; setView: (v: "list" | "grid") => void;
@@ -603,6 +562,7 @@ const CenterToolbar = (() => {
       selectMode: boolean; setSelectMode: (v: boolean) => void;
       onAdd: (raw: string) => void; addPending: boolean;
       onSmartSearch: () => void; onImport: () => void; onRefresh: () => void;
+      onOpenFilters: () => void;
     },
     ref: React.Ref<HTMLInputElement>,
   ) => {
@@ -688,6 +648,14 @@ const CenterToolbar = (() => {
               </TooltipTrigger>
               <TooltipContent>Refresh</TooltipContent>
             </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-primary/10 hover:text-primary" onClick={onOpenFilters}>
+                  <Filter className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Filters</TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -705,6 +673,7 @@ const CenterToolbar = (() => {
   selectMode: boolean; setSelectMode: (v: boolean) => void;
   onAdd: (raw: string) => void; addPending: boolean;
   onSmartSearch: () => void; onImport: () => void; onRefresh: () => void;
+  onOpenFilters: () => void;
 } & React.RefAttributes<HTMLInputElement>>;
 
 function AddLinkInput({ onAdd, loading }: { onAdd: (raw: string) => void; loading: boolean }) {
