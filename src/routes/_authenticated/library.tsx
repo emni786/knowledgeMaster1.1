@@ -454,6 +454,7 @@ function LibraryPage() {
               addPending={addMut.isPending}
               onSmartSearch={() => setSmartOpen(true)}
               onImport={() => setImportOpen(true)}
+              onExport={handleExport}
               onRefresh={() => linksQuery.refetch()}
               onOpenFilters={() => setFiltersOpen(true)}
             />
