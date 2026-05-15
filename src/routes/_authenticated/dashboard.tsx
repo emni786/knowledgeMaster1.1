@@ -7,9 +7,18 @@ import { fetchLinks } from "@/lib/api/links";
 import { AppShell } from "@/components/AppShell";
 import { TopicGraph3D } from "@/components/TopicGraph3D";
 import { analyzeTopics } from "@/lib/insights.functions";
-import { Activity, Link2, Pin, AlertTriangle, TrendingUp, Sparkles, Loader2 } from "lucide-react";
+import {
+  listRssFeeds, addRssFeed, deleteRssFeed, refreshRssFeed, toggleRssFeed,
+} from "@/lib/rss.functions";
+import {
+  Activity, Link2, Pin, AlertTriangle, TrendingUp, Sparkles, Loader2,
+  Rss, Plus, RefreshCw, Trash2, AlertCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { formatDistanceToNow } from "date-fns";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
