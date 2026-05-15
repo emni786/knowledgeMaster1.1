@@ -39,6 +39,7 @@ function Page() {
           <h2 className="font-display text-3xl font-semibold">Settings</h2>
           <p className="mt-2 text-sm text-muted-foreground">Manage your Knowledgemaster account, integrations, and preferences.</p>
         </section>
+        <BrowserExtension />
         <TelegramBots />
       </main>
     </div>
