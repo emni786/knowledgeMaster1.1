@@ -345,9 +345,9 @@ function LibraryPage() {
 
             {!collapsed && (
               <div className="px-4 py-3 border-t border-border/50 grid grid-cols-3 gap-1.5">
-                <MiniStatPill label="All" value={stats.all} />
-                <MiniStatPill label="Pin" value={allLinks.filter((l) => !l.deleted_at && l.pinned).length} />
-                <MiniStatPill label="Fail" value={stats.failed} tone={stats.failed ? "destructive" : "default"} />
+                <MiniPill label="All" value={stats.all} />
+                <MiniPill label="Pin" value={allLinks.filter((l) => !l.deleted_at && l.pinned).length} />
+                <MiniPill label="Fail" value={stats.failed} destructive={stats.failed > 0} />
               </div>
             )}
 
@@ -1204,5 +1204,14 @@ function BulkTagDialog({ open, onOpenChange, onApply }: { open: boolean; onOpenC
         <DialogFooter><Button onClick={() => onApply(tag)} disabled={!tag.trim()}>Apply</Button></DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function MiniPill({ label, value, destructive }: { label: string; value: number; destructive?: boolean }) {
+  return (
+    <div className={`flex flex-col items-center justify-center rounded-md border border-border/50 px-1.5 py-1 ${destructive ? "bg-destructive/10 text-destructive" : "bg-muted/30"}`}>
+      <span className="font-mono text-sm leading-none">{value}</span>
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">{label}</span>
+    </div>
   );
 }
