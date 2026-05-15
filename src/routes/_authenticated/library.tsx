@@ -706,6 +706,31 @@ const CenterToolbar = (() => {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-primary/10 hover:text-primary" onClick={onImport}>
+                  <Upload className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Import</TooltipContent>
+            </Tooltip>
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-primary/10 hover:text-primary">
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Export</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="font-mono text-xs">
+                <DropdownMenuItem onClick={() => onExport("json")}>Export as JSON</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onExport("csv")}>Export as CSV</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onExport("txt")}>Export as TXT (URLs)</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-primary/10 hover:text-primary" onClick={onOpenFilters}>
                   <Filter className="h-4 w-4" />
                 </Button>
