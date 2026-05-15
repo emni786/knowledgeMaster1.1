@@ -240,6 +240,7 @@ export type Database = {
           bot_token: string
           bot_username: string | null
           created_at: string
+          default_chat_id: number | null
           id: string
           last_error: string | null
           owner_id: string
@@ -252,6 +253,7 @@ export type Database = {
           bot_token: string
           bot_username?: string | null
           created_at?: string
+          default_chat_id?: number | null
           id?: string
           last_error?: string | null
           owner_id: string
@@ -264,6 +266,7 @@ export type Database = {
           bot_token?: string
           bot_username?: string | null
           created_at?: string
+          default_chat_id?: number | null
           id?: string
           last_error?: string | null
           owner_id?: string
