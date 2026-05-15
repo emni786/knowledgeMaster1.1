@@ -528,7 +528,7 @@ export function TopicGraph3D({
 
           {/* Clusters */}
           <button
-            onClick={() => setShowClusters((v) => !v)}
+            onClick={() => setShowClusters(!showClusters)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-white/10 ${showClusters ? "bg-white/10 text-cyan-300" : ""}`}
           >
             <Boxes className="h-3.5 w-3.5" /> Clusters
