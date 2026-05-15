@@ -402,8 +402,21 @@ function LibraryPage() {
               onSmartSearch={() => setSmartOpen(true)}
               onImport={() => setImportOpen(true)}
               onRefresh={() => linksQuery.refetch()}
+              onOpenFilters={() => setFiltersOpen(true)}
             />
 
+            <div className="sticky top-[120px] z-10 bg-background/80 backdrop-blur border-b border-border/50 px-6">
+              <PageTabs
+                value={tab}
+                onChange={setTab}
+                tabs={[
+                  { id: "all", label: "All", icon: Inbox, badge: stats.all },
+                  { id: "pinned", label: "Pinned", icon: Pin, badge: allLinks.filter((l) => !l.deleted_at && l.pinned).length },
+                  { id: "failed", label: "Failed", icon: AlertCircle, badge: stats.failed },
+                  { id: "trash", label: "Trash", icon: Trash2, badge: stats.deleted },
+                ]}
+              />
+            </div>
             {selectMode && selectedIds.size > 0 && (
               <div className="sticky top-[120px] z-20 px-6 py-2 bg-primary/10 border-b border-primary/20 flex items-center gap-2 animate-fade-in">
                 <span className="font-mono text-xs">{selectedIds.size} selected</span>
