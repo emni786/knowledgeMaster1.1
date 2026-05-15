@@ -112,6 +112,15 @@ export const Route = createFileRoute("/api/public/telegram/webhook/$botId")({
         const chatId = msg.chat?.id;
         const botToken = bot.bot_token;
 
+        // Remember most recent chat for forwarding website-saved links back to Telegram
+        if (chatId) {
+          await admin
+            .from("telegram_bots")
+            .update({ default_chat_id: chatId })
+            .eq("id", bot.id)
+            .then(() => undefined, () => undefined);
+        }
+
         async function reply(textBody: string) {
           if (!chatId) return;
           await fetch(`${TG_API}/bot${botToken}/sendMessage`, {
