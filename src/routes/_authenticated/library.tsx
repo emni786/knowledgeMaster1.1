@@ -345,9 +345,9 @@ function LibraryPage() {
 
             {!collapsed && (
               <div className="px-4 py-3 border-t border-border/50 grid grid-cols-3 gap-1.5">
-                <MiniStatPill label="All" value={stats.all} />
-                <MiniStatPill label="Pin" value={allLinks.filter((l) => !l.deleted_at && l.pinned).length} />
-                <MiniStatPill label="Fail" value={stats.failed} tone={stats.failed ? "destructive" : "default"} />
+                <MiniPill label="All" value={stats.all} />
+                <MiniPill label="Pin" value={allLinks.filter((l) => !l.deleted_at && l.pinned).length} />
+                <MiniPill label="Fail" value={stats.failed} destructive={stats.failed > 0} />
               </div>
             )}
 
