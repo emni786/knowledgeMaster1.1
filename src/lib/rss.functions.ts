@@ -85,8 +85,7 @@ async function fetchFeed(url: string): Promise<string> {
       redirect: "follow",
       signal: ctrl.signal,
       headers: {
-        "user-agent":
-          "Mozilla/5.0 (compatible; KnowledgemasterBot/1.0; +https://knowledgemaster.lovable.app)",
+        "user-agent": "Mozilla/5.0 (compatible; KnowledgemasterBot/1.0)",
         accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
       },
     });
@@ -111,9 +110,7 @@ export const listRssFeeds = createServerFn({ method: "GET" })
 
 export const addRssFeed = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input) =>
-    z.object({ url: z.string().url().max(2048) }).parse(input),
-  )
+  .inputValidator((input) => z.object({ url: z.string().url().max(2048) }).parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const url = data.url.trim();
@@ -161,9 +158,7 @@ export const deleteRssFeed = createServerFn({ method: "POST" })
 
 export const toggleRssFeed = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input) =>
-    z.object({ id: z.string().uuid(), active: z.boolean() }).parse(input),
-  )
+  .inputValidator((input) => z.object({ id: z.string().uuid(), active: z.boolean() }).parse(input))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     const { error } = await supabase

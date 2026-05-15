@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
+import { chatCompletion, getAIConfig } from "@/lib/ai";
 
 const TG_API = "https://api.telegram.org";
 
@@ -28,7 +29,11 @@ function normalize(url: string): string {
 }
 
 function domainOf(url: string): string | null {
-  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return null; }
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
 }
 
 function detectType(url: string): string {
@@ -41,31 +46,19 @@ function detectType(url: string): string {
 }
 
 async function summarize(url: string): Promise<{ title: string | null; summary: string | null }> {
-  const apiKey = process.env.LOVABLE_API_KEY;
-  if (!apiKey) return { title: null, summary: null };
+  if (!getAIConfig()) return { title: null, summary: null };
   try {
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You analyze URLs for a knowledge library. Reply with strict JSON only: {\"title\":\"...\",\"summary\":\"...\"}. Title <= 90 chars. Summary 1-2 sentences <= 240 chars.",
-          },
-          { role: "user", content: `URL: ${url}` },
-        ],
-        response_format: { type: "json_object" },
-      }),
+    const raw = await chatCompletion({
+      messages: [
+        {
+          role: "system",
+          content:
+            'You analyze URLs for a knowledge library. Reply with strict JSON only: {"title":"...","summary":"..."}. Title <= 90 chars. Summary 1-2 sentences <= 240 chars.',
+        },
+        { role: "user", content: `URL: ${url}` },
+      ],
+      jsonResponse: true,
     });
-    if (!res.ok) return { title: null, summary: null };
-    const json = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = json.choices?.[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(raw) as { title?: string; summary?: string };
     return {
       title: parsed.title?.slice(0, 200) ?? null,
@@ -94,11 +87,25 @@ export const Route = createFileRoute("/api/public/telegram/webhook/$botId")({
           return new Response("Unauthorized", { status: 401 });
         }
 
-        const update = await request.json().catch(() => null) as
-          | { message?: { chat?: { id: number }; text?: string; caption?: string; entities?: Array<{ type: string; url?: string }> }; edited_message?: unknown; channel_post?: unknown }
-          | null;
-        const msg = (update?.message ?? (update as Record<string, unknown> | null)?.channel_post ?? (update as Record<string, unknown> | null)?.edited_message) as
-          | { chat?: { id: number }; text?: string; caption?: string; entities?: Array<{ type: string; url?: string }> }
+        const update = (await request.json().catch(() => null)) as {
+          message?: {
+            chat?: { id: number };
+            text?: string;
+            caption?: string;
+            entities?: Array<{ type: string; url?: string }>;
+          };
+          edited_message?: unknown;
+          channel_post?: unknown;
+        } | null;
+        const msg = (update?.message ??
+          (update as Record<string, unknown> | null)?.channel_post ??
+          (update as Record<string, unknown> | null)?.edited_message) as
+          | {
+              chat?: { id: number };
+              text?: string;
+              caption?: string;
+              entities?: Array<{ type: string; url?: string }>;
+            }
           | undefined;
         if (!msg) return Response.json({ ok: true });
 
@@ -118,7 +125,10 @@ export const Route = createFileRoute("/api/public/telegram/webhook/$botId")({
             .from("telegram_bots")
             .update({ default_chat_id: chatId })
             .eq("id", bot.id)
-            .then(() => undefined, () => undefined);
+            .then(
+              () => undefined,
+              () => undefined,
+            );
         }
 
         async function reply(textBody: string) {
@@ -126,7 +136,11 @@ export const Route = createFileRoute("/api/public/telegram/webhook/$botId")({
           await fetch(`${TG_API}/bot${botToken}/sendMessage`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ chat_id: chatId, text: textBody, disable_web_page_preview: true }),
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: textBody,
+              disable_web_page_preview: true,
+            }),
           }).catch(() => {});
         }
 
@@ -156,9 +170,11 @@ export const Route = createFileRoute("/api/public/telegram/webhook/$botId")({
           if (!error) saved++;
         }
 
-        await reply(saved === urls.length
-          ? `Saved ${saved} link${saved === 1 ? "" : "s"} to your library.`
-          : `Saved ${saved} of ${urls.length} links.`);
+        await reply(
+          saved === urls.length
+            ? `Saved ${saved} link${saved === 1 ? "" : "s"} to your library.`
+            : `Saved ${saved} of ${urls.length} links.`,
+        );
 
         return Response.json({ ok: true, saved });
       },

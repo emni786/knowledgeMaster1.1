@@ -17,17 +17,22 @@
   .ok { color: #22c55e; }
   .err { color: #f87171; }
   a { color: #93c5fd; }
+  .hint { font-size: 11px; opacity: .7; margin-top: 6px; }
 </style>
 </head>
 <body>
 <h1>Knowledgemaster</h1>
 <div id="setup" style="display:none">
   <div class="row">
+    <label for="apiUrl">App URL</label>
+    <input id="apiUrl" type="url" placeholder="https://your-knowledgemaster.example.com" />
+  </div>
+  <div class="row">
     <label for="token">API token</label>
     <input id="token" type="password" placeholder="km_..." autocomplete="off" />
   </div>
-  <button id="saveToken">Save token</button>
-  <div class="status">Get a token from <a href="https://knowledgemaster.lovable.app/settings" target="_blank">Settings</a>.</div>
+  <button id="saveSetup">Save settings</button>
+  <div class="hint">Get a token from <span id="settingsHint">your app's Settings page</span>.</div>
 </div>
 <div id="main" style="display:none">
   <div class="row">
@@ -35,7 +40,7 @@
     <div class="url" id="url"></div>
   </div>
   <button id="save">Save to library</button>
-  <button id="reset" class="secondary">Change token</button>
+  <button id="reset" class="secondary">Change settings</button>
   <div class="status" id="status"></div>
 </div>
 <script src="popup.js"></script>

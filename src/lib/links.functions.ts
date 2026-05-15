@@ -1,8 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-
-const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
+import { chatCompletion, getAIConfig } from "@/lib/ai";
 
 const ContentType = z.enum(["article", "video", "repo", "docs", "tool", "thread", "other"]);
 
@@ -18,12 +17,26 @@ function normalizeUrl(u: string): string {
   try {
     const url = new URL(u);
     url.hash = "";
-    ["utm_source","utm_medium","utm_campaign","utm_term","utm_content","ref","ref_src"].forEach((p) => url.searchParams.delete(p));
+    [
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_term",
+      "utm_content",
+      "ref",
+      "ref_src",
+    ].forEach((p) => url.searchParams.delete(p));
     return url.toString().replace(/\/$/, "");
-  } catch { return u; }
+  } catch {
+    return u;
+  }
 }
 function getDomain(u: string): string | null {
-  try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return null; }
+  try {
+    return new URL(u).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
 }
 function detectType(u: string, html?: string): Analysis["content_type"] {
   const d = (getDomain(u) ?? "").toLowerCase();
@@ -31,8 +44,10 @@ function detectType(u: string, html?: string): Analysis["content_type"] {
   if (/github\.com|gitlab\.com|bitbucket\.org/.test(d)) return "repo";
   if (/docs?\.|developer\.|\.dev\b|readthedocs/.test(d)) return "docs";
   if (/twitter\.com|x\.com|threads\.net|reddit\.com|news\.ycombinator/.test(d)) return "thread";
-  if (html && /<meta[^>]+property=["']og:type["'][^>]+content=["']video/i.test(html)) return "video";
-  if (html && /<meta[^>]+property=["']og:type["'][^>]+content=["']article/i.test(html)) return "article";
+  if (html && /<meta[^>]+property=["']og:type["'][^>]+content=["']video/i.test(html))
+    return "video";
+  if (html && /<meta[^>]+property=["']og:type["'][^>]+content=["']article/i.test(html))
+    return "article";
   return "article";
 }
 
@@ -47,12 +62,20 @@ function extractMeta(html: string): { title: string; description: string; siteNa
     pick(/<meta[^>]+name=["']twitter:description["'][^>]+content=["']([^"']+)["']/i) ||
     pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
   const siteName = pick(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i);
-  return { title: decodeEntities(title), description: decodeEntities(description), siteName: decodeEntities(siteName) };
+  return {
+    title: decodeEntities(title),
+    description: decodeEntities(description),
+    siteName: decodeEntities(siteName),
+  };
 }
 function decodeEntities(s: string): string {
   return s
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
 }
 function stripHtml(html: string): string {
@@ -73,7 +96,7 @@ async function fetchPage(url: string): Promise<string> {
       redirect: "follow",
       signal: ctrl.signal,
       headers: {
-        "user-agent": "Mozilla/5.0 (compatible; KnowledgemasterBot/1.0; +https://xenonowledge.app)",
+        "user-agent": "Mozilla/5.0 (compatible; KnowledgemasterBot/1.0)",
         accept: "text/html,application/xhtml+xml",
       },
     });
@@ -82,13 +105,20 @@ async function fetchPage(url: string): Promise<string> {
     if (!ct.includes("text/html") && !ct.includes("xml")) return "";
     const text = await res.text();
     return text.slice(0, 200_000);
-  } catch { return ""; }
-  finally { clearTimeout(t); }
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(t);
+  }
 }
 
-async function aiAnalyze(input: { url: string; domain: string | null; meta: { title: string; description: string; siteName: string }; bodyText: string }): Promise<Analysis | null> {
-  const apiKey = process.env.LOVABLE_API_KEY;
-  if (!apiKey) return null;
+async function aiAnalyze(input: {
+  url: string;
+  domain: string | null;
+  meta: { title: string; description: string; siteName: string };
+  bodyText: string;
+}): Promise<Analysis | null> {
+  if (!getAIConfig()) return null;
 
   const system =
     "You are a meticulous web link analyzer. Reply with strict JSON only matching the schema: " +
@@ -108,32 +138,38 @@ async function aiAnalyze(input: { url: string; domain: string | null; meta: { ti
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 15000);
   try {
-    const res = await fetch(GATEWAY, {
-      method: "POST",
+    const raw = await chatCompletion({
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      jsonResponse: true,
       signal: ctrl.signal,
-      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        response_format: { type: "json_object" },
-      }),
     });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = json.choices?.[0]?.message?.content ?? "{}";
     const parsed = Analysis.parse(JSON.parse(raw));
     parsed.tags = Array.from(
-      new Set(parsed.tags.map((t) => t.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "")).filter(Boolean))
+      new Set(
+        parsed.tags
+          .map((t) =>
+            t
+              .toLowerCase()
+              .replace(/[^a-z0-9-]+/g, "-")
+              .replace(/^-+|-+$/g, ""),
+          )
+          .filter(Boolean),
+      ),
     ).slice(0, 6);
     return parsed;
-  } catch { return null; }
-  finally { clearTimeout(t); }
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
-async function analyzeOne(url: string): Promise<{ analysis: Analysis; domain: string | null; html_present: boolean }> {
+async function analyzeOne(
+  url: string,
+): Promise<{ analysis: Analysis; domain: string | null; html_present: boolean }> {
   const domain = getDomain(url);
   const html = await fetchPage(url);
   const meta = html ? extractMeta(html) : { title: "", description: "", siteName: "" };
@@ -146,7 +182,14 @@ async function analyzeOne(url: string): Promise<{ analysis: Analysis; domain: st
   const fallback: Analysis = {
     title: meta.title || domain || url,
     summary: meta.description || `Saved link from ${domain ?? "the web"}.`,
-    tags: domain ? [domain.split(".")[0].toLowerCase().replace(/[^a-z0-9-]+/g, "-")] : ["uncategorized"],
+    tags: domain
+      ? [
+          domain
+            .split(".")[0]
+            .toLowerCase()
+            .replace(/[^a-z0-9-]+/g, "-"),
+        ]
+      : ["uncategorized"],
     content_type: detectType(url, html),
   };
   return { analysis: fallback, domain, html_present: !!html };
@@ -155,7 +198,7 @@ async function analyzeOne(url: string): Promise<{ analysis: Analysis; domain: st
 export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
-    z.object({ urls: z.array(z.string().url()).min(1).max(20) }).parse(input)
+    z.object({ urls: z.array(z.string().url()).min(1).max(20) }).parse(input),
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
@@ -215,7 +258,7 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
             .eq("id", row.id);
           return { url: row.url, title: null, summary: null, ok: false };
         }
-      })
+      }),
     );
 
     // 3) Forward saved links to user's Telegram bot(s) — fire and forget
@@ -224,8 +267,13 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
         .from("telegram_bots")
         .select("bot_token, default_chat_id, active")
         .eq("active", true);
-      const targets = ((bots ?? []) as Array<{ bot_token: string; default_chat_id: number | null; active: boolean }>)
-        .filter((b) => b.default_chat_id);
+      const targets = (
+        (bots ?? []) as Array<{
+          bot_token: string;
+          default_chat_id: number | null;
+          active: boolean;
+        }>
+      ).filter((b) => b.default_chat_id);
       if (targets.length) {
         const successes = results.filter((r) => r.ok);
         await Promise.all(
@@ -241,8 +289,8 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
                   disable_web_page_preview: false,
                 }),
               }).catch(() => undefined);
-            })
-          )
+            }),
+          ),
         );
       }
     } catch {
@@ -264,7 +312,10 @@ export const reanalyzeLink = createServerFn({ method: "POST" })
       .single();
     if (error || !row) throw new Error(error?.message ?? "Link not found");
 
-    await supabase.from("links").update({ status: "pending", error_message: null }).eq("id", row.id);
+    await supabase
+      .from("links")
+      .update({ status: "pending", error_message: null })
+      .eq("id", row.id);
 
     try {
       const { analysis } = await analyzeOne(row.url);
