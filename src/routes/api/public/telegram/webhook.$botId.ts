@@ -46,7 +46,7 @@ function detectType(url: string): string {
 }
 
 async function summarize(url: string): Promise<{ title: string | null; summary: string | null }> {
-  if (!getAIConfig()) return { title: null, summary: null };
+  if (!(await getAIConfig())) return { title: null, summary: null };
   try {
     const raw = await chatCompletion({
       messages: [

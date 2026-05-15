@@ -48,7 +48,7 @@ async function summarize(
   url: string,
   title?: string,
 ): Promise<{ title: string | null; summary: string | null; tags: string[] }> {
-  if (!getAIConfig()) return { title: title ?? null, summary: null, tags: [] };
+  if (!(await getAIConfig())) return { title: title ?? null, summary: null, tags: [] };
   try {
     const raw = await chatCompletion({
       messages: [

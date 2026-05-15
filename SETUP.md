@@ -109,12 +109,40 @@ SUPABASE_URL=https://xxxx.supabase.co
 SUPABASE_PUBLISHABLE_KEY=eyJhbGciOi...
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOi... (service_role key)
 
-# Google Gemini (ধাপ ৩ এ পাওয়া)
+# Admin user — যে email দিয়ে signup করলে admin মানা হবে
+# (যেমন আপনার email; friends/family এ লিখবেন না)
+ADMIN_EMAIL=you@example.com
+
+# Google Gemini (ধাপ ৩ এ পাওয়া) — fallback হিসেবে কাজ করবে
+# admin UI থেকেও পরে save করতে পারবেন
 GOOGLE_AI_API_KEY=AIzaSy...
 
 # Telegram বা production এ deploy করতে চাইলে — পরে set করবেন
 PUBLIC_APP_URL=
 ```
+
+---
+
+## ধাপ ৫.৫ — Admin vs Public tier কীভাবে কাজ করে
+
+এই app **2-tier** mode এ চলে:
+
+### Admin (আপনি — `ADMIN_EMAIL` এ যে email বসিয়েছেন)
+- যে email বসিয়েছেন সেটা দিয়ে signup/login করলে app আপনাকে auto-admin বানাবে
+- Settings page এ একটা **"Admin settings"** section দেখবেন (orange border, "Admin only" badge)
+- সেখান থেকে UI দিয়ে edit করতে পারবেন:
+  - Google AI API key
+  - AI model / base URL
+  - Public app URL (Telegram webhook এর জন্য)
+- DB তে save হলে — এর পর থেকে DB এর value কে priority দেয়া হবে (env value ignore হবে)
+
+### Public (বন্ধু/family — যে যে email use করবে)
+- Normal signup → কোনো admin UI দেখবে না
+- Behind the scenes আপনার set করা AI key + URL ব্যবহার করবে
+- প্রত্যেকের link/collection/Telegram bot RLS দিয়ে isolated থাকবে — তারা শুধু নিজের data দেখবে
+
+### ADMIN_EMAIL change করতে চাইলে
+Cloudflare/Vercel dashboard এ env var change করে redeploy করুন। ৫ মিনিটের মধ্যে নতুন email admin হয়ে যাবে, পুরোনোটার admin status auto-remove হবে।
 
 ---
 

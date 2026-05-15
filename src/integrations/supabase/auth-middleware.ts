@@ -1,7 +1,37 @@
 import { createMiddleware } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "./client.server";
 import type { Database } from "./types";
+
+// In-process cache keyed by user id so we don't hit the DB to re-sync the
+// admin flag on every authenticated request. Re-checked every 5 minutes,
+// which is plenty to pick up an ADMIN_EMAIL env change after a redeploy.
+const adminSyncCache = new Map<string, number>();
+const ADMIN_SYNC_INTERVAL_MS = 5 * 60_000;
+
+async function syncAdminFlag(userId: string, email: string | undefined | null): Promise<boolean> {
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const userEmail = email?.trim().toLowerCase();
+  const shouldBeAdmin = Boolean(adminEmail && userEmail && adminEmail === userEmail);
+
+  const lastSync = adminSyncCache.get(userId);
+  if (lastSync && Date.now() - lastSync < ADMIN_SYNC_INTERVAL_MS) {
+    return shouldBeAdmin;
+  }
+
+  try {
+    await supabaseAdmin
+      .from("profiles" as never)
+      .update({ is_admin: shouldBeAdmin } as never)
+      .eq("id", userId);
+    adminSyncCache.set(userId, Date.now());
+  } catch (err) {
+    console.error("[auth] admin flag sync failed:", err);
+  }
+
+  return shouldBeAdmin;
+}
 
 export const requireSupabaseAuth = createMiddleware({ type: "function" }).server(
   async ({ next }) => {
@@ -61,11 +91,16 @@ export const requireSupabaseAuth = createMiddleware({ type: "function" }).server
       throw new Error("Unauthorized: No user ID found in token");
     }
 
+    const userId = data.claims.sub;
+    const email = typeof data.claims.email === "string" ? data.claims.email : null;
+    const isAdmin = await syncAdminFlag(userId, email);
+
     return next({
       context: {
         supabase,
-        userId: data.claims.sub,
+        userId,
         claims: data.claims,
+        isAdmin,
       },
     });
   },
