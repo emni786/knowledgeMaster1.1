@@ -12,7 +12,7 @@ import {
 } from "@/lib/rss.functions";
 import {
   Activity, Link2, Pin, AlertTriangle, TrendingUp, Sparkles, Loader2,
-  Rss, Plus, RefreshCw, Trash2, AlertCircle,
+  Rss, Plus, RefreshCw, Trash2, AlertCircle, Boxes, Hash, Network,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
