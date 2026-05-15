@@ -68,6 +68,9 @@ function DashboardPage() {
   }, [links]);
 
   const activeLinks = useMemo(() => links.filter((l) => !l.deleted_at), [links]);
+  const [clusters, setClusters] = useState(false);
+
+  const cosmosStats = useMemo(() => computeCosmosStats(activeLinks, clusters), [activeLinks, clusters]);
 
   const qc = useQueryClient();
   useEffect(() => {
