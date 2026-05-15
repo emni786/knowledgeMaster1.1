@@ -1,7 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,13 +63,13 @@ function AuthPage() {
 
   const signInWithGoogle = async () => {
     setLoading(true);
-    const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: `${window.location.origin}/library`,
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/library` },
     });
-    if (result.redirected) return;
+    // signInWithOAuth triggers a redirect on success; we only fall through on error.
     setLoading(false);
-    if (result.error) return toast.error(result.error.message);
-    window.location.href = "/library";
+    if (error) toast.error(error.message);
   };
 
   return (
@@ -93,13 +92,18 @@ function AuthPage() {
             className="w-full font-mono text-xs"
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
-              <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.4-1.7 4.1-5.5 4.1-3.3 0-6-2.74-6-6.1s2.7-6.1 6-6.1c1.88 0 3.14.8 3.86 1.49l2.63-2.53C16.86 3.43 14.66 2.5 12 2.5 6.97 2.5 2.9 6.57 2.9 11.6S6.97 20.7 12 20.7c6.93 0 9.1-4.86 9.1-7.4 0-.5-.06-.88-.13-1.1H12z"/>
+              <path
+                fill="#EA4335"
+                d="M12 10.2v3.9h5.5c-.24 1.4-1.7 4.1-5.5 4.1-3.3 0-6-2.74-6-6.1s2.7-6.1 6-6.1c1.88 0 3.14.8 3.86 1.49l2.63-2.53C16.86 3.43 14.66 2.5 12 2.5 6.97 2.5 2.9 6.57 2.9 11.6S6.97 20.7 12 20.7c6.93 0 9.1-4.86 9.1-7.4 0-.5-.06-.88-.13-1.1H12z"
+              />
             </svg>
             Continue with Google
           </Button>
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-border" />
-            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">or</span>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              or
+            </span>
             <div className="h-px flex-1 bg-border" />
           </div>
           <Tabs defaultValue="signin">
@@ -111,16 +115,32 @@ function AuthPage() {
               <form onSubmit={signIn} className="space-y-3">
                 <div className="space-y-1.5">
                   <Label className="font-mono text-[11px] uppercase tracking-wider">Email</Label>
-                  <Input className="h-9 font-mono text-sm" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <Input
+                    className="h-9 font-mono text-sm"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="font-mono text-[11px] uppercase tracking-wider">Password</Label>
-                  <Input className="h-9 font-mono text-sm" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+                  <Input
+                    className="h-9 font-mono text-sm"
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
                 </div>
                 <Button type="submit" disabled={loading} className="w-full font-mono text-xs">
                   {loading ? "Signing in..." : "Sign in"}
                 </Button>
-                <button type="button" onClick={reset} className="text-xs text-muted-foreground hover:text-primary w-full text-center">
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="text-xs text-muted-foreground hover:text-primary w-full text-center"
+                >
                   Forgot password?
                 </button>
               </form>
@@ -129,11 +149,24 @@ function AuthPage() {
               <form onSubmit={signUp} className="space-y-3">
                 <div className="space-y-1.5">
                   <Label className="font-mono text-[11px] uppercase tracking-wider">Email</Label>
-                  <Input className="h-9 font-mono text-sm" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <Input
+                    className="h-9 font-mono text-sm"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="font-mono text-[11px] uppercase tracking-wider">Password</Label>
-                  <Input className="h-9 font-mono text-sm" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+                  <Input
+                    className="h-9 font-mono text-sm"
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
                 </div>
                 <Button type="submit" disabled={loading} className="w-full font-mono text-xs">
                   {loading ? "Creating..." : "Create account"}

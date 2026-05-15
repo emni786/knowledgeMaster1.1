@@ -1,30 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-
-const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
+import { chatCompletion } from "@/lib/ai";
 
 async function callAI(system: string, user: string): Promise<string> {
-  const apiKey = process.env.LOVABLE_API_KEY;
-  if (!apiKey) throw new Error("AI gateway is not configured");
-  const res = await fetch(GATEWAY, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      response_format: { type: "json_object" },
-    }),
+  return chatCompletion({
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    jsonResponse: true,
   });
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`AI gateway ${res.status}: ${t.slice(0, 200)}`);
-  }
-  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return json.choices?.[0]?.message?.content ?? "{}";
 }
 
 const TrendingItem = z.object({
@@ -39,15 +25,15 @@ export type TrendingItem = z.infer<typeof TrendingItem>;
 export const getTrending = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
-    z.object({ focus: z.enum(["all", "apps", "ai-news"]).default("all") }).parse(input ?? {})
+    z.object({ focus: z.enum(["all", "apps", "ai-news"]).default("all") }).parse(input ?? {}),
   )
   .handler(async ({ data }) => {
     const focusText =
       data.focus === "apps"
         ? "trending consumer & developer apps launched recently"
         : data.focus === "ai-news"
-        ? "the latest AI news, model releases, and research breakthroughs"
-        : "a balanced mix of trending apps AND latest AI news";
+          ? "the latest AI news, model releases, and research breakthroughs"
+          : "a balanced mix of trending apps AND latest AI news";
 
     const system =
       "You are a tech trends curator. Reply with strict JSON only: " +
@@ -63,13 +49,15 @@ export const getTrending = createServerFn({ method: "POST" })
 
 const DigestSchema = z.object({
   headline: z.string(),
-  themes: z.array(
-    z.object({
-      title: z.string(),
-      summary: z.string(),
-      linkIds: z.array(z.string()).default([]),
-    })
-  ).min(1),
+  themes: z
+    .array(
+      z.object({
+        title: z.string(),
+        summary: z.string(),
+        linkIds: z.array(z.string()).default([]),
+      }),
+    )
+    .min(1),
   takeaways: z.array(z.string()).min(1),
 });
 export type Digest = z.infer<typeof DigestSchema>;
@@ -77,7 +65,7 @@ export type Digest = z.infer<typeof DigestSchema>;
 export const getDigest = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
-    z.object({ window: z.enum(["week", "month"]).default("week") }).parse(input ?? {})
+    z.object({ window: z.enum(["week", "month"]).default("week") }).parse(input ?? {}),
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context;
@@ -94,16 +82,28 @@ export const getDigest = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     const links = (rows ?? []) as Array<{
-      id: string; title: string | null; summary: string | null;
-      url: string; domain: string | null; content_type: string;
-      tags: string[]; created_at: string;
+      id: string;
+      title: string | null;
+      summary: string | null;
+      url: string;
+      domain: string | null;
+      content_type: string;
+      tags: string[];
+      created_at: string;
     }>;
 
     if (!links.length) {
       return {
         digest: {
           headline: `Nothing saved in the last ${data.window === "week" ? "7 days" : "30 days"} yet.`,
-          themes: [{ title: "Get started", summary: "Forward links to your Telegram bot or paste them in the library to build your first digest.", linkIds: [] }],
+          themes: [
+            {
+              title: "Get started",
+              summary:
+                "Forward links to your Telegram bot or paste them in the library to build your first digest.",
+              linkIds: [],
+            },
+          ],
           takeaways: ["Connect a Telegram bot in Settings to ingest links on the go."],
         } satisfies Digest,
         count: 0,
@@ -137,15 +137,13 @@ const TopicAssignments = z.object({
     z.object({
       id: z.string(),
       topics: z.array(z.string().min(2).max(40)).min(1).max(6),
-    })
+    }),
   ),
 });
 
 export const analyzeTopics = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input) =>
-    z.object({ force: z.boolean().default(false) }).parse(input ?? {})
-  )
+  .inputValidator((input) => z.object({ force: z.boolean().default(false) }).parse(input ?? {}))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
 
@@ -161,13 +159,21 @@ export const analyzeTopics = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     const links = (rows ?? []) as Array<{
-      id: string; title: string | null; summary: string | null;
-      url: string; domain: string | null; content_type: string;
+      id: string;
+      title: string | null;
+      summary: string | null;
+      url: string;
+      domain: string | null;
+      content_type: string;
       tags: string[] | null;
     }>;
 
     if (!links.length) {
-      return { analyzed: 0, updated: 0, message: "All links already have topics. Use 'Re-analyze all' to refresh." };
+      return {
+        analyzed: 0,
+        updated: 0,
+        message: "All links already have topics. Use 'Re-analyze all' to refresh.",
+      };
     }
 
     const system =
@@ -201,7 +207,16 @@ export const analyzeTopics = createServerFn({ method: "POST" })
           const topics = map.get(l.id);
           if (!topics?.length) return;
           const norm = Array.from(
-            new Set(topics.map((t) => t.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "")).filter(Boolean))
+            new Set(
+              topics
+                .map((t) =>
+                  t
+                    .toLowerCase()
+                    .replace(/[^a-z0-9-]+/g, "-")
+                    .replace(/^-+|-+$/g, ""),
+                )
+                .filter(Boolean),
+            ),
           ).slice(0, 6);
           if (!norm.length) return;
           const { error: uerr } = await supabase
@@ -209,7 +224,7 @@ export const analyzeTopics = createServerFn({ method: "POST" })
             .update({ tags: norm })
             .eq("id", l.id);
           if (!uerr) updated.push(l.id);
-        })
+        }),
       );
     }
 
@@ -219,4 +234,3 @@ export const analyzeTopics = createServerFn({ method: "POST" })
       message: `Analyzed ${links.length} link${links.length === 1 ? "" : "s"}, updated ${updated.length} with fresh topics.`,
     };
   });
-

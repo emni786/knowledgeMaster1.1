@@ -5,18 +5,32 @@ import { getRequestHost } from "@tanstack/react-start/server";
 
 const TG_API = "https://api.telegram.org";
 
-const PROJECT_ID = "0320b183-aafd-475b-b3ae-4d955b1f3708";
-
+/**
+ * Build the public HTTPS URL Telegram should send updates to.
+ *
+ * Telegram only accepts ports 80/88/443/8443 on public HTTPS hosts, so when
+ * running locally on `localhost:8080` you must set `PUBLIC_APP_URL` to a
+ * publicly reachable HTTPS origin (e.g. an ngrok / cloudflared tunnel, or your
+ * deployed production URL). In production the request `Host` header is usually
+ * enough.
+ */
 function publicWebhookUrl(host: string, botId: string): string {
-  // Telegram only accepts ports 80/88/443/8443 on public HTTPS hosts.
-  // In dev (localhost:8080) we must use the stable public preview URL instead.
+  const override = process.env.PUBLIC_APP_URL?.replace(/\/$/, "");
+  if (override) {
+    return `${override}/api/public/telegram/webhook/${botId}`;
+  }
+
   const isPublicHost =
     host &&
     !host.startsWith("localhost") &&
     !host.startsWith("127.0.0.1") &&
     !host.startsWith("0.0.0.0");
-  const publicHost = isPublicHost ? host : `project--${PROJECT_ID}-dev.lovable.app`;
-  return `https://${publicHost}/api/public/telegram/webhook/${botId}`;
+  if (!isPublicHost) {
+    throw new Error(
+      "PUBLIC_APP_URL is not set. Telegram needs a public HTTPS URL to deliver webhook updates. Set PUBLIC_APP_URL to your tunnel or deployed origin (e.g. https://your-app.example.com).",
+    );
+  }
+  return `https://${host}/api/public/telegram/webhook/${botId}`;
 }
 
 export const listTelegramBots = createServerFn({ method: "GET" })
@@ -28,25 +42,40 @@ export const listTelegramBots = createServerFn({ method: "GET" })
       .select("id, bot_username, bot_id, active, last_error, created_at")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return { bots: (data ?? []) as Array<{
-      id: string; bot_username: string | null; bot_id: number | null;
-      active: boolean; last_error: string | null; created_at: string;
-    }> };
+    return {
+      bots: (data ?? []) as Array<{
+        id: string;
+        bot_username: string | null;
+        bot_id: number | null;
+        active: boolean;
+        last_error: string | null;
+        created_at: string;
+      }>,
+    };
   });
 
 export const addTelegramBot = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
-    z.object({
-      bot_token: z.string().trim().regex(/^\d{6,}:[A-Za-z0-9_-]{20,}$/, "Invalid bot token format"),
-    }).parse(input)
+    z
+      .object({
+        bot_token: z
+          .string()
+          .trim()
+          .regex(/^\d{6,}:[A-Za-z0-9_-]{20,}$/, "Invalid bot token format"),
+      })
+      .parse(input),
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
     // Validate token via getMe
     const meRes = await fetch(`${TG_API}/bot${data.bot_token}/getMe`);
-    const meJson = await meRes.json() as { ok: boolean; result?: { id: number; username?: string }; description?: string };
+    const meJson = (await meRes.json()) as {
+      ok: boolean;
+      result?: { id: number; username?: string };
+      description?: string;
+    };
     if (!meRes.ok || !meJson.ok || !meJson.result) {
       throw new Error(meJson.description || "Telegram rejected the token");
     }
@@ -76,7 +105,7 @@ export const addTelegramBot = createServerFn({ method: "POST" })
         allowed_updates: ["message", "edited_message", "channel_post"],
       }),
     });
-    const setJson = await setRes.json() as { ok: boolean; description?: string };
+    const setJson = (await setRes.json()) as { ok: boolean; description?: string };
     if (!setJson.ok) {
       await supabase
         .from("telegram_bots" as never)
@@ -105,7 +134,7 @@ export const testTelegramWebhook = createServerFn({ method: "POST" })
     const expectedUrl = publicWebhookUrl(host, bot.id);
 
     const infoRes = await fetch(`${TG_API}/bot${bot.bot_token}/getWebhookInfo`);
-    const infoJson = await infoRes.json() as {
+    const infoJson = (await infoRes.json()) as {
       ok: boolean;
       description?: string;
       result?: {
@@ -120,7 +149,10 @@ export const testTelegramWebhook = createServerFn({ method: "POST" })
     };
     if (!infoRes.ok || !infoJson.ok || !infoJson.result) {
       const msg = infoJson.description || "Failed to fetch webhook info";
-      await supabase.from("telegram_bots" as never).update({ last_error: msg } as never).eq("id", bot.id);
+      await supabase
+        .from("telegram_bots" as never)
+        .update({ last_error: msg } as never)
+        .eq("id", bot.id);
       throw new Error(msg);
     }
 
@@ -138,10 +170,13 @@ export const testTelegramWebhook = createServerFn({ method: "POST" })
           allowed_updates: ["message", "edited_message", "channel_post"],
         }),
       });
-      const setJson = await setRes.json() as { ok: boolean; description?: string };
+      const setJson = (await setRes.json()) as { ok: boolean; description?: string };
       if (!setJson.ok) {
         const msg = setJson.description || "Failed to re-register webhook";
-        await supabase.from("telegram_bots" as never).update({ last_error: msg } as never).eq("id", bot.id);
+        await supabase
+          .from("telegram_bots" as never)
+          .update({ last_error: msg } as never)
+          .eq("id", bot.id);
         throw new Error(msg);
       }
       repaired = true;
@@ -182,7 +217,10 @@ export const deleteTelegramBot = createServerFn({ method: "POST" })
     if (token) {
       await fetch(`${TG_API}/bot${token}/deleteWebhook`, { method: "POST" }).catch(() => {});
     }
-    const { error } = await supabase.from("telegram_bots" as never).delete().eq("id", data.id);
+    const { error } = await supabase
+      .from("telegram_bots" as never)
+      .delete()
+      .eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
