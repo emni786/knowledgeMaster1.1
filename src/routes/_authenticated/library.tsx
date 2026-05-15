@@ -1206,3 +1206,12 @@ function BulkTagDialog({ open, onOpenChange, onApply }: { open: boolean; onOpenC
     </Dialog>
   );
 }
+
+function MiniPill({ label, value, destructive }: { label: string; value: number; destructive?: boolean }) {
+  return (
+    <div className={`flex flex-col items-center justify-center rounded-md border border-border/50 px-1.5 py-1 ${destructive ? "bg-destructive/10 text-destructive" : "bg-muted/30"}`}>
+      <span className="font-mono text-sm leading-none">{value}</span>
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">{label}</span>
+    </div>
+  );
+}
