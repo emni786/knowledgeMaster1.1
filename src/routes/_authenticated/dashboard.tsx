@@ -9,11 +9,28 @@ import { TopicGraph3D } from "@/components/TopicGraph3D";
 import { PageTabs } from "@/components/PageTabs";
 import { analyzeTopics } from "@/lib/insights.functions";
 import {
-  listRssFeeds, addRssFeed, deleteRssFeed, refreshRssFeed, toggleRssFeed,
+  listRssFeeds,
+  addRssFeed,
+  deleteRssFeed,
+  refreshRssFeed,
+  toggleRssFeed,
 } from "@/lib/rss.functions";
 import {
-  Activity, Link2, Pin, AlertTriangle, TrendingUp, Sparkles, Loader2,
-  Rss, Plus, RefreshCw, Trash2, AlertCircle, Boxes, Hash, Network,
+  Activity,
+  Link2,
+  Pin,
+  AlertTriangle,
+  TrendingUp,
+  Sparkles,
+  Loader2,
+  Rss,
+  Plus,
+  RefreshCw,
+  Trash2,
+  AlertCircle,
+  Boxes,
+  Hash,
+  Network,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,16 +38,24 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
 } from "recharts";
 import { format, subDays, startOfDay } from "date-fns";
-
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
       { title: "Dashboard — Knowledgemaster" },
-      { name: "description", content: "3D atoms view of your knowledge library, real-time stats, and ingest velocity." },
+      {
+        name: "description",
+        content: "3D atoms view of your knowledge library, real-time stats, and ingest velocity.",
+      },
     ],
   }),
   component: DashboardPage,
@@ -60,18 +85,23 @@ function DashboardPage() {
       const d = startOfDay(subDays(new Date(), i));
       days.push({ date: d.toISOString(), label: format(d, "MMM d"), count: 0 });
     }
-    links.filter((l) => !l.deleted_at).forEach((l) => {
-      const d = startOfDay(new Date(l.created_at)).toISOString();
-      const slot = days.find((s) => s.date === d);
-      if (slot) slot.count++;
-    });
+    links
+      .filter((l) => !l.deleted_at)
+      .forEach((l) => {
+        const d = startOfDay(new Date(l.created_at)).toISOString();
+        const slot = days.find((s) => s.date === d);
+        if (slot) slot.count++;
+      });
     return days;
   }, [links]);
 
   const activeLinks = useMemo(() => links.filter((l) => !l.deleted_at), [links]);
   const [clusters, setClusters] = useState(false);
 
-  const cosmosStats = useMemo(() => computeCosmosStats(activeLinks, clusters), [activeLinks, clusters]);
+  const cosmosStats = useMemo(
+    () => computeCosmosStats(activeLinks, clusters),
+    [activeLinks, clusters],
+  );
 
   const qc = useQueryClient();
   useEffect(() => {
@@ -81,7 +111,9 @@ function DashboardPage() {
         qc.invalidateQueries({ queryKey: ["links"] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [qc]);
 
   const [tab, setTab] = useState<"overview" | "trends" | "feeds">("overview");
@@ -105,9 +137,21 @@ function DashboardPage() {
         <div className="space-y-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Stat icon={Link2} label="Total links" value={stats.total} loading={isLoading} />
-            <Stat icon={TrendingUp} label="Last 7 days" value={stats.recent} loading={isLoading} tone="primary" />
+            <Stat
+              icon={TrendingUp}
+              label="Last 7 days"
+              value={stats.recent}
+              loading={isLoading}
+              tone="primary"
+            />
             <Stat icon={Pin} label="Pinned" value={stats.pinned} loading={isLoading} />
-            <Stat icon={AlertTriangle} label="Failed" value={stats.failed} loading={isLoading} tone={stats.failed ? "destructive" : "muted"} />
+            <Stat
+              icon={AlertTriangle}
+              label="Failed"
+              value={stats.failed}
+              loading={isLoading}
+              tone={stats.failed ? "destructive" : "muted"}
+            />
           </div>
 
           <section className="space-y-3">
@@ -140,7 +184,11 @@ function DashboardPage() {
       {tab === "trends" && (
         <div className="space-y-8">
           <section className="space-y-3">
-            <Header icon={TrendingUp} title="Ingest velocity" subtitle="Links saved per day over the last 14 days." />
+            <Header
+              icon={TrendingUp}
+              title="Ingest velocity"
+              subtitle="Links saved per day over the last 14 days."
+            />
             <div className="rounded-2xl border border-border/60 bg-card/40 p-4 h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={series} margin={{ top: 10, right: 10, left: -16, bottom: 0 }}>
@@ -151,20 +199,45 @@ function DashboardPage() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
                   <Tooltip
-                    contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                    contentStyle={{
+                      background: "hsl(var(--popover))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: 8,
+                      fontSize: 12,
+                    }}
                     labelStyle={{ color: "hsl(var(--foreground))" }}
                   />
-                  <Area type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#velocity)" />
+                  <Area
+                    type="monotone"
+                    dataKey="count"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={2}
+                    fill="url(#velocity)"
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </section>
 
           <section className="space-y-3">
-            <Header icon={Sparkles} title="Cosmos breakdown" subtitle="Top topics, edges, and group composition for your current graph." />
+            <Header
+              icon={Sparkles}
+              title="Cosmos breakdown"
+              subtitle="Top topics, edges, and group composition for your current graph."
+            />
             <CosmosStatsPanel stats={cosmosStats} clusters={clusters} />
           </section>
         </div>
@@ -176,16 +249,26 @@ function DashboardPage() {
 }
 
 function Stat({
-  icon: Icon, label, value, loading, tone = "default",
+  icon: Icon,
+  label,
+  value,
+  loading,
+  tone = "default",
 }: {
-  icon: typeof Activity; label: string; value: number; loading?: boolean;
+  icon: typeof Activity;
+  label: string;
+  value: number;
+  loading?: boolean;
   tone?: "default" | "primary" | "muted" | "destructive";
 }) {
   const toneCls =
-    tone === "primary" ? "text-primary"
-    : tone === "destructive" ? "text-destructive"
-    : tone === "muted" ? "text-muted-foreground"
-    : "text-foreground";
+    tone === "primary"
+      ? "text-primary"
+      : tone === "destructive"
+        ? "text-destructive"
+        : tone === "muted"
+          ? "text-muted-foreground"
+          : "text-foreground";
   return (
     <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
       <div className="flex items-center justify-between text-xs uppercase tracking-widest font-mono text-muted-foreground">
@@ -199,7 +282,17 @@ function Stat({
   );
 }
 
-function Header({ icon: Icon, title, subtitle, children }: { icon: typeof Activity; title: string; subtitle: string; children?: React.ReactNode }) {
+function Header({
+  icon: Icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: typeof Activity;
+  title: string;
+  subtitle: string;
+  children?: React.ReactNode;
+}) {
   return (
     <div className="flex items-end justify-between gap-4 flex-wrap">
       <div>
@@ -230,19 +323,33 @@ function AnalyzeTopicsButton() {
       <Button
         size="sm"
         variant="outline"
-        onClick={() => { setMode("missing"); m.mutate(false); }}
+        onClick={() => {
+          setMode("missing");
+          m.mutate(false);
+        }}
         disabled={m.isPending}
       >
-        {m.isPending && mode === "missing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+        {m.isPending && mode === "missing" ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Sparkles className="h-3.5 w-3.5" />
+        )}
         Analyze new
       </Button>
       <Button
         size="sm"
         variant="ghost"
-        onClick={() => { setMode("all"); m.mutate(true); }}
+        onClick={() => {
+          setMode("all");
+          m.mutate(true);
+        }}
         disabled={m.isPending}
       >
-        {m.isPending && mode === "all" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+        {m.isPending && mode === "all" ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Sparkles className="h-3.5 w-3.5" />
+        )}
         Re-analyze all
       </Button>
     </div>
@@ -334,7 +441,11 @@ function RssFeedsSection() {
             disabled={addMut.isPending}
           />
           <Button type="submit" disabled={addMut.isPending || !url.trim()}>
-            {addMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            {addMut.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
             Add feed
           </Button>
         </form>
@@ -352,11 +463,16 @@ function RssFeedsSection() {
                 <Rss className="h-4 w-4 text-primary/70 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium truncate">{f.title || f.domain || f.url}</div>
-                  <div className="text-[11px] font-mono text-muted-foreground truncate">{f.url}</div>
+                  <div className="text-[11px] font-mono text-muted-foreground truncate">
+                    {f.url}
+                  </div>
                   <div className="mt-0.5 flex items-center gap-3 text-[11px] text-muted-foreground">
                     <span>{f.items_imported} imported</span>
                     {f.last_fetched_at && (
-                      <span>· refreshed {formatDistanceToNow(new Date(f.last_fetched_at), { addSuffix: true })}</span>
+                      <span>
+                        · refreshed{" "}
+                        {formatDistanceToNow(new Date(f.last_fetched_at), { addSuffix: true })}
+                      </span>
                     )}
                     {f.last_error && (
                       <span className="flex items-center gap-1 text-destructive">
@@ -377,9 +493,11 @@ function RssFeedsSection() {
                   disabled={refreshMut.isPending && refreshMut.variables === f.id}
                   title="Refresh now"
                 >
-                  {refreshMut.isPending && refreshMut.variables === f.id
-                    ? <Loader2 className="h-4 w-4 animate-spin" />
-                    : <RefreshCw className="h-4 w-4" />}
+                  {refreshMut.isPending && refreshMut.variables === f.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
                 </Button>
                 <Button
                   size="icon"
@@ -401,18 +519,17 @@ function RssFeedsSection() {
   );
 }
 
-
 // ---------- Cosmos Stats ----------
 
 const PLANET_PALETTE = [
-  { name: "Saturn Gold",    color: "#fbbf24" },
-  { name: "Mars Red",       color: "#ef4444" },
-  { name: "Pluto Purple",   color: "#a78bfa" },
-  { name: "Uranus Cyan",    color: "#22d3ee" },
-  { name: "Neptune Blue",   color: "#3b82f6" },
-  { name: "Earth Green",    color: "#34d399" },
+  { name: "Saturn Gold", color: "#fbbf24" },
+  { name: "Mars Red", color: "#ef4444" },
+  { name: "Pluto Purple", color: "#a78bfa" },
+  { name: "Uranus Cyan", color: "#22d3ee" },
+  { name: "Neptune Blue", color: "#3b82f6" },
+  { name: "Earth Green", color: "#34d399" },
   { name: "Jupiter Orange", color: "#fb923c" },
-  { name: "Venus Pink",     color: "#f472b6" },
+  { name: "Venus Pink", color: "#f472b6" },
 ];
 
 type CosmosTopic = { id: string; count: number; group: number; color: string; groupName: string };
@@ -440,7 +557,9 @@ function computeCosmosStats(links: any[], clusters: boolean): CosmosStats {
     }
   });
 
-  const top = Array.from(tagCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 60);
+  const top = Array.from(tagCount.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 60);
   const allowed = new Set(top.map(([t]) => t));
 
   const adjacency = new Map<string, Set<string>>();
@@ -472,7 +591,9 @@ function computeCosmosStats(links: any[], clusters: boolean): CosmosStats {
         const cur = stack.pop()!;
         if (seen.has(cur)) continue;
         seen.set(cur, c);
-        adjacency.get(cur)?.forEach((n) => { if (!seen.has(n)) stack.push(n); });
+        adjacency.get(cur)?.forEach((n) => {
+          if (!seen.has(n)) stack.push(n);
+        });
       }
       c++;
     });
@@ -483,7 +604,13 @@ function computeCosmosStats(links: any[], clusters: boolean): CosmosStats {
 
   const topics: CosmosTopic[] = top.map(([id, count]) => {
     const g = groupOf(id);
-    return { id, count, group: g, color: PLANET_PALETTE[g].color, groupName: PLANET_PALETTE[g].name };
+    return {
+      id,
+      count,
+      group: g,
+      color: PLANET_PALETTE[g].color,
+      groupName: PLANET_PALETTE[g].name,
+    };
   });
 
   const groupCount = new Map<number, number>();
@@ -507,7 +634,9 @@ function CosmosStatsPanel({ stats, clusters }: { stats: CosmosStats; clusters: b
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
           <Sparkles className="h-3.5 w-3.5 text-amber-300" /> Cosmos stats
         </div>
-        <span className={`text-[10px] font-mono uppercase tracking-widest ${clusters ? "text-cyan-300" : "text-muted-foreground"}`}>
+        <span
+          className={`text-[10px] font-mono uppercase tracking-widest ${clusters ? "text-cyan-300" : "text-muted-foreground"}`}
+        >
           {clusters ? "Clusters mode" : "Tag groups"}
         </span>
       </div>
@@ -530,7 +659,10 @@ function CosmosStatsPanel({ stats, clusters }: { stats: CosmosStats; clusters: b
             <ul className="space-y-1.5">
               {stats.topTopics.map((t) => (
                 <li key={t.id} className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: t.color }} />
+                  <span
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ background: t.color }}
+                  />
                   <span className="font-mono text-sm truncate min-w-0 flex-1">{t.id}</span>
                   <div className="h-1.5 w-24 rounded-full bg-muted overflow-hidden">
                     <div
@@ -538,7 +670,9 @@ function CosmosStatsPanel({ stats, clusters }: { stats: CosmosStats; clusters: b
                       style={{ width: `${(t.count / maxCount) * 100}%`, background: t.color }}
                     />
                   </div>
-                  <span className="tabular-nums text-xs text-muted-foreground w-8 text-right">{t.count}</span>
+                  <span className="tabular-nums text-xs text-muted-foreground w-8 text-right">
+                    {t.count}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -555,7 +689,10 @@ function CosmosStatsPanel({ stats, clusters }: { stats: CosmosStats; clusters: b
             <ul className="space-y-1.5">
               {stats.groups.map((g, i) => (
                 <li key={`${g.name}-${i}`} className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: g.color }} />
+                  <span
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ background: g.color }}
+                  />
                   <span className="text-sm truncate min-w-0 flex-1">
                     {clusters ? `Cluster ${i + 1}` : g.name}
                   </span>
@@ -572,7 +709,15 @@ function CosmosStatsPanel({ stats, clusters }: { stats: CosmosStats; clusters: b
   );
 }
 
-function MiniStat({ icon: Icon, label, value }: { icon: typeof Activity; label: string; value: number | string }) {
+function MiniStat({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Activity;
+  label: string;
+  value: number | string;
+}) {
   return (
     <div className="rounded-xl border border-border/40 bg-background/40 p-3">
       <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">

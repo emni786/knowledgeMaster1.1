@@ -2,7 +2,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
-import { Compass, ExternalLink, Loader2, RefreshCw, Sparkles, Newspaper, AppWindow } from "lucide-react";
+import {
+  Compass,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  Newspaper,
+  AppWindow,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/AppShell";
 import { getTrending, type TrendingItem } from "@/lib/insights.functions";
@@ -13,7 +21,10 @@ export const Route = createFileRoute("/_authenticated/discover")({
   head: () => ({
     meta: [
       { title: "Discover — Knowledgemaster" },
-      { name: "description", content: "Trending apps and the latest AI news, curated by AI in real time." },
+      {
+        name: "description",
+        content: "Trending apps and the latest AI news, curated by AI in real time.",
+      },
     ],
   }),
   component: Page,
@@ -36,9 +47,14 @@ function Page() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  useEffect(() => { mut.mutate(focus); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => {
+    mut.mutate(focus); /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, []);
 
-  const onFocus = (f: Focus) => { setFocus(f); mut.mutate(f); };
+  const onFocus = (f: Focus) => {
+    setFocus(f);
+    mut.mutate(f);
+  };
 
   const save = async (it: TrendingItem) => {
     try {
@@ -54,16 +70,31 @@ function Page() {
       title="Discover"
       description="AI-curated trending apps and breaking AI news. Tap refresh for a new pull."
       actions={
-        <Button size="sm" variant="outline" onClick={() => mut.mutate(focus)} disabled={mut.isPending}>
-          {mut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => mut.mutate(focus)}
+          disabled={mut.isPending}
+        >
+          {mut.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
           <span className="ml-2 hidden sm:inline">Refresh</span>
         </Button>
       }
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Pill active={focus === "all"} onClick={() => onFocus("all")} icon={Sparkles}>All trending</Pill>
-        <Pill active={focus === "apps"} onClick={() => onFocus("apps")} icon={AppWindow}>Apps</Pill>
-        <Pill active={focus === "ai-news"} onClick={() => onFocus("ai-news")} icon={Newspaper}>AI news</Pill>
+        <Pill active={focus === "all"} onClick={() => onFocus("all")} icon={Sparkles}>
+          All trending
+        </Pill>
+        <Pill active={focus === "apps"} onClick={() => onFocus("apps")} icon={AppWindow}>
+          Apps
+        </Pill>
+        <Pill active={focus === "ai-news"} onClick={() => onFocus("ai-news")} icon={Newspaper}>
+          AI news
+        </Pill>
         {generatedAt && (
           <span className="ml-auto text-[11px] font-mono text-muted-foreground">
             updated {new Date(generatedAt).toLocaleTimeString()}
@@ -74,20 +105,28 @@ function Page() {
       {mut.isPending && !items ? (
         <div className="grid gap-3 md:grid-cols-2">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-40 animate-pulse rounded-2xl border border-border/60 bg-card/40" />
+            <div
+              key={i}
+              className="h-40 animate-pulse rounded-2xl border border-border/60 bg-card/40"
+            />
           ))}
         </div>
       ) : items && items.length ? (
         <div className="grid gap-3 md:grid-cols-2">
           {items.map((it, i) => (
-            <article key={i} className="group rounded-2xl border border-border/60 bg-card/40 p-5 hover:border-primary/40 transition-colors">
+            <article
+              key={i}
+              className="group rounded-2xl border border-border/60 bg-card/40 p-5 hover:border-primary/40 transition-colors"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                     <CategoryBadge cat={it.category} />
                     {it.source && <span>· {it.source}</span>}
                   </div>
-                  <h3 className="mt-2 font-display text-lg font-semibold leading-snug">{it.title}</h3>
+                  <h3 className="mt-2 font-display text-lg font-semibold leading-snug">
+                    {it.title}
+                  </h3>
                 </div>
               </div>
               <p className="mt-2 text-sm text-muted-foreground line-clamp-3">{it.summary}</p>
@@ -97,7 +136,9 @@ function Page() {
                     Open <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
                   </a>
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => save(it)}>Save to library</Button>
+                <Button size="sm" variant="ghost" onClick={() => save(it)}>
+                  Save to library
+                </Button>
               </div>
             </article>
           ))}
@@ -115,8 +156,16 @@ function Page() {
 }
 
 function Pill({
-  children, active, onClick, icon: Icon,
-}: { children: React.ReactNode; active?: boolean; onClick: () => void; icon: typeof Compass }) {
+  children,
+  active,
+  onClick,
+  icon: Icon,
+}: {
+  children: React.ReactNode;
+  active?: boolean;
+  onClick: () => void;
+  icon: typeof Compass;
+}) {
   return (
     <button
       onClick={onClick}
@@ -138,5 +187,9 @@ function CategoryBadge({ cat }: { cat: TrendingItem["category"] }) {
     tool: "bg-amber-500/15 text-amber-500",
     research: "bg-violet-500/15 text-violet-500",
   };
-  return <span className={`rounded-full px-2 py-0.5 ${map[cat] ?? "bg-muted text-muted-foreground"}`}>{cat}</span>;
+  return (
+    <span className={`rounded-full px-2 py-0.5 ${map[cat] ?? "bg-muted text-muted-foreground"}`}>
+      {cat}
+    </span>
+  );
 }

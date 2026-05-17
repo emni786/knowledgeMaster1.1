@@ -1,14 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { createClient } from "@supabase/supabase-js";
 import { chatCompletion, getAIConfig } from "@/lib/ai";
+import { publicAdmin, getDataClientForOwnerId } from "@/integrations/supabase/dual-client.server";
 
 const TG_API = "https://api.telegram.org";
-
-function getAdmin() {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-    auth: { persistSession: false },
-  });
-}
 
 const URL_RE = /https?:\/\/[^\s<>"')]+/gi;
 
@@ -73,8 +67,8 @@ export const Route = createFileRoute("/api/public/telegram/webhook/$botId")({
   server: {
     handlers: {
       POST: async ({ request, params }) => {
-        const admin = getAdmin();
-        const { data: bot } = await admin
+        // telegram_bots lives on PUBLIC Supabase (auth-source).
+        const { data: bot } = await publicAdmin
           .from("telegram_bots")
           .select("id, owner_id, bot_token, webhook_secret, active")
           .eq("id", params.botId)
@@ -121,7 +115,7 @@ export const Route = createFileRoute("/api/public/telegram/webhook/$botId")({
 
         // Remember most recent chat for forwarding website-saved links back to Telegram
         if (chatId) {
-          await admin
+          await publicAdmin
             .from("telegram_bots")
             .update({ default_chat_id: chatId })
             .eq("id", bot.id)
@@ -149,12 +143,15 @@ export const Route = createFileRoute("/api/public/telegram/webhook/$botId")({
           return Response.json({ ok: true });
         }
 
+        // links is routed: PERSONAL for admin owners, PUBLIC otherwise.
+        const dataDb = await getDataClientForOwnerId(bot.owner_id);
+
         let saved = 0;
         for (const url of urls) {
           const norm = normalize(url);
           const dom = domainOf(norm);
           const ai = await summarize(url);
-          const { error } = await admin.from("links").insert({
+          const { error } = await dataDb.from("links").insert({
             owner_id: bot.owner_id,
             url,
             normalized_url: norm,

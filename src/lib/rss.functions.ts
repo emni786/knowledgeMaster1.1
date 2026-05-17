@@ -99,11 +99,10 @@ async function fetchFeed(url: string): Promise<string> {
 export const listRssFeeds = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase } = context;
-    const { data, error } = await supabase
-      .from("rss_feeds")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { supabase, userId, dataNeedsScoping } = context;
+    let q = supabase.from("rss_feeds").select("*").order("created_at", { ascending: false });
+    if (dataNeedsScoping) q = q.eq("owner_id", userId);
+    const { data, error } = await q;
     if (error) throw new Error(error.message);
     return data ?? [];
   });
@@ -150,8 +149,10 @@ export const deleteRssFeed = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { error } = await supabase.from("rss_feeds").delete().eq("id", data.id);
+    const { supabase, userId, dataNeedsScoping } = context;
+    const del = supabase.from("rss_feeds").delete().eq("id", data.id);
+    if (dataNeedsScoping) del.eq("owner_id", userId);
+    const { error } = await del;
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -160,11 +161,10 @@ export const toggleRssFeed = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ id: z.string().uuid(), active: z.boolean() }).parse(input))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { error } = await supabase
-      .from("rss_feeds")
-      .update({ active: data.active })
-      .eq("id", data.id);
+    const { supabase, userId, dataNeedsScoping } = context;
+    const upd = supabase.from("rss_feeds").update({ active: data.active }).eq("id", data.id);
+    if (dataNeedsScoping) upd.eq("owner_id", userId);
+    const { error } = await upd;
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -173,13 +173,11 @@ export const refreshRssFeed = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
+    const { supabase, userId, dataNeedsScoping } = context;
 
-    const { data: feed, error: fErr } = await supabase
-      .from("rss_feeds")
-      .select("*")
-      .eq("id", data.id)
-      .single();
+    const fq = supabase.from("rss_feeds").select("*").eq("id", data.id);
+    if (dataNeedsScoping) fq.eq("owner_id", userId);
+    const { data: feed, error: fErr } = await fq.single();
     if (fErr || !feed) throw new Error(fErr?.message ?? "Feed not found");
 
     let parsed: ParsedFeed;
@@ -188,21 +186,25 @@ export const refreshRssFeed = createServerFn({ method: "POST" })
       parsed = parseFeed(xml);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Fetch failed";
-      await supabase
+      const eUpd = supabase
         .from("rss_feeds")
         .update({ last_error: msg, last_fetched_at: new Date().toISOString() })
         .eq("id", feed.id);
+      if (dataNeedsScoping) eUpd.eq("owner_id", userId);
+      await eUpd;
       throw new Error(msg);
     }
 
     if (parsed.items.length === 0) {
-      await supabase
+      const noUpd = supabase
         .from("rss_feeds")
         .update({
           last_error: "No items in feed",
           last_fetched_at: new Date().toISOString(),
         })
         .eq("id", feed.id);
+      if (dataNeedsScoping) noUpd.eq("owner_id", userId);
+      await noUpd;
       return { imported: 0, skipped: 0 };
     }
 
@@ -235,7 +237,7 @@ export const refreshRssFeed = createServerFn({ method: "POST" })
       if (insErr && insErr.code !== "23505") throw new Error(insErr.message);
     }
 
-    await supabase
+    const finalUpd = supabase
       .from("rss_feeds")
       .update({
         last_fetched_at: new Date().toISOString(),
@@ -245,6 +247,8 @@ export const refreshRssFeed = createServerFn({ method: "POST" })
         site_url: feed.site_url || parsed.siteUrl || null,
       })
       .eq("id", feed.id);
+    if (dataNeedsScoping) finalUpd.eq("owner_id", userId);
+    await finalUpd;
 
     return { imported: newItems.length, skipped: parsed.items.length - newItems.length };
   });

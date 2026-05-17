@@ -12,7 +12,10 @@ export const Route = createFileRoute("/_authenticated/digest")({
   head: () => ({
     meta: [
       { title: "Digest — Knowledgemaster" },
-      { name: "description", content: "AI-written digest of everything you saved this week or month." },
+      {
+        name: "description",
+        content: "AI-written digest of everything you saved this week or month.",
+      },
     ],
   }),
   component: Page,
@@ -38,9 +41,14 @@ function Page() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  useEffect(() => { mut.mutate(win); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => {
+    mut.mutate(win); /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, []);
 
-  const onWin = (w: Win) => { setWin(w); mut.mutate(w); };
+  const onWin = (w: Win) => {
+    setWin(w);
+    mut.mutate(w);
+  };
 
   const linkById = (id: string) => links.find((l) => l.id === id);
 
@@ -49,15 +57,28 @@ function Page() {
       title="Digest"
       description="A clean, themed brief of everything you saved — written by AI, grounded in your library."
       actions={
-        <Button size="sm" variant="outline" onClick={() => mut.mutate(win)} disabled={mut.isPending}>
-          {mut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => mut.mutate(win)}
+          disabled={mut.isPending}
+        >
+          {mut.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
           <span className="ml-2 hidden sm:inline">Regenerate</span>
         </Button>
       }
     >
       <div className="flex items-center gap-2">
-        <Pill active={win === "week"} onClick={() => onWin("week")}>Past 7 days</Pill>
-        <Pill active={win === "month"} onClick={() => onWin("month")}>Past 30 days</Pill>
+        <Pill active={win === "week"} onClick={() => onWin("week")}>
+          Past 7 days
+        </Pill>
+        <Pill active={win === "month"} onClick={() => onWin("month")}>
+          Past 30 days
+        </Pill>
         <span className="ml-auto text-[11px] font-mono text-muted-foreground">
           {count} link{count === 1 ? "" : "s"} considered
         </span>
@@ -66,7 +87,10 @@ function Page() {
       {mut.isPending && !digest ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-32 animate-pulse rounded-2xl border border-border/60 bg-card/40" />
+            <div
+              key={i}
+              className="h-32 animate-pulse rounded-2xl border border-border/60 bg-card/40"
+            />
           ))}
         </div>
       ) : digest ? (
@@ -75,7 +99,9 @@ function Page() {
             <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-primary">
               <Sparkles className="h-3.5 w-3.5" /> This {win}
             </div>
-            <h3 className="mt-2 font-display text-2xl md:text-3xl font-semibold leading-tight">{digest.headline}</h3>
+            <h3 className="mt-2 font-display text-2xl md:text-3xl font-semibold leading-tight">
+              {digest.headline}
+            </h3>
           </section>
 
           <section className="space-y-3">
@@ -101,7 +127,9 @@ function Page() {
                               <ExternalLink className="h-3 w-3 mt-0.5 shrink-0 opacity-60 group-hover:opacity-100" />
                               <span className="truncate">
                                 <span className="font-medium">{l.title ?? l.url}</span>
-                                {l.domain && <span className="text-muted-foreground"> · {l.domain}</span>}
+                                {l.domain && (
+                                  <span className="text-muted-foreground"> · {l.domain}</span>
+                                )}
                               </span>
                             </a>
                           </li>
@@ -138,12 +166,22 @@ function Page() {
   );
 }
 
-function Pill({ children, active, onClick }: { children: React.ReactNode; active?: boolean; onClick: () => void }) {
+function Pill({
+  children,
+  active,
+  onClick,
+}: {
+  children: React.ReactNode;
+  active?: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
       className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-        active ? "border-primary bg-primary/10 text-primary" : "border-border/60 bg-card/40 text-muted-foreground hover:text-foreground"
+        active
+          ? "border-primary bg-primary/10 text-primary"
+          : "border-border/60 bg-card/40 text-muted-foreground hover:text-foreground"
       }`}
     >
       {children}
@@ -152,5 +190,9 @@ function Pill({ children, active, onClick }: { children: React.ReactNode; active
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h3 className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">{children}</h3>;
+  return (
+    <h3 className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+      {children}
+    </h3>
+  );
 }

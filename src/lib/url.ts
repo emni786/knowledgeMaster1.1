@@ -21,7 +21,9 @@ export function faviconFor(url: string): string {
   return domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=64` : "";
 }
 
-export function detectContentType(url: string): "article" | "video" | "repo" | "docs" | "tool" | "thread" | "other" {
+export function detectContentType(
+  url: string,
+): "article" | "video" | "repo" | "docs" | "tool" | "thread" | "other" {
   const d = getDomain(url).toLowerCase();
   if (/youtube\.com|youtu\.be|vimeo\.com/.test(d)) return "video";
   if (/github\.com|gitlab\.com|bitbucket\.org/.test(d)) return "repo";

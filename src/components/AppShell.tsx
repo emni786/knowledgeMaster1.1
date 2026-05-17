@@ -1,8 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { ReactNode } from "react";
 import {
-  Activity, Compass, BarChart3, Newspaper, Settings,
-  Library as LibraryIcon, Menu,
+  Activity,
+  Compass,
+  BarChart3,
+  Newspaper,
+  Settings,
+  Library as LibraryIcon,
+  Menu,
 } from "lucide-react";
 import { Wordmark } from "@/components/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
@@ -70,7 +75,9 @@ export function AppShell({
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="p-0 w-64">
-                <div className="p-4 border-b border-border/50"><Wordmark collapsed={false} /></div>
+                <div className="p-4 border-b border-border/50">
+                  <Wordmark collapsed={false} />
+                </div>
                 <NavList />
               </SheetContent>
             </Sheet>
@@ -81,8 +88,12 @@ export function AppShell({
           <main className="flex-1 px-6 py-8 lg:px-10 lg:py-10">
             <div className="mx-auto max-w-6xl space-y-8">
               <section>
-                <h2 className="font-display text-3xl md:text-4xl font-semibold tracking-tight">{title}</h2>
-                {description && <p className="mt-2 text-sm text-muted-foreground max-w-2xl">{description}</p>}
+                <h2 className="font-display text-3xl md:text-4xl font-semibold tracking-tight">
+                  {title}
+                </h2>
+                {description && (
+                  <p className="mt-2 text-sm text-muted-foreground max-w-2xl">{description}</p>
+                )}
               </section>
               {children}
             </div>

@@ -68,17 +68,19 @@ export const getDigest = createServerFn({ method: "POST" })
     z.object({ window: z.enum(["week", "month"]).default("week") }).parse(input ?? {}),
   )
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
+    const { supabase, userId, dataNeedsScoping } = context;
     const since = new Date();
     since.setDate(since.getDate() - (data.window === "week" ? 7 : 30));
 
-    const { data: rows, error } = await supabase
+    let q = supabase
       .from("links")
       .select("id, title, summary, url, domain, content_type, tags, created_at")
       .is("deleted_at", null)
       .gte("created_at", since.toISOString())
       .order("created_at", { ascending: false })
       .limit(60);
+    if (dataNeedsScoping) q = q.eq("owner_id", userId);
+    const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
 
     const links = (rows ?? []) as Array<{
@@ -145,7 +147,7 @@ export const analyzeTopics = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ force: z.boolean().default(false) }).parse(input ?? {}))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
+    const { supabase, userId, dataNeedsScoping } = context;
 
     let q = supabase
       .from("links")
@@ -154,6 +156,7 @@ export const analyzeTopics = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .limit(200);
     if (!data.force) q = q.or("tags.is.null,tags.eq.{}");
+    if (dataNeedsScoping) q = q.eq("owner_id", userId);
 
     const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
@@ -219,10 +222,9 @@ export const analyzeTopics = createServerFn({ method: "POST" })
             ),
           ).slice(0, 6);
           if (!norm.length) return;
-          const { error: uerr } = await supabase
-            .from("links")
-            .update({ tags: norm })
-            .eq("id", l.id);
+          const upd = supabase.from("links").update({ tags: norm }).eq("id", l.id);
+          if (dataNeedsScoping) upd.eq("owner_id", userId);
+          const { error: uerr } = await upd;
           if (!uerr) updated.push(l.id);
         }),
       );

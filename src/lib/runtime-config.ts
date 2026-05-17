@@ -10,7 +10,7 @@
 // browsers — they're used internally to make AI calls and build Telegram
 // webhook URLs.
 
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { publicAdmin } from "@/integrations/supabase/dual-client.server";
 
 export interface AdminSettings {
   google_ai_api_key: string | null;
@@ -33,7 +33,8 @@ export async function readAdminSettings(force = false): Promise<AdminSettings> {
     return cached.value;
   }
 
-  const { data, error } = await supabaseAdmin
+  // admin_settings is an auth-source table — always on PUBLIC Supabase.
+  const { data, error } = await publicAdmin
     .from("admin_settings" as never)
     .select("google_ai_api_key, ai_base_url, ai_model, public_app_url, updated_at, updated_by")
     .eq("id", 1)
