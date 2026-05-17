@@ -17,10 +17,21 @@ import {
   KeyRound,
   Shield,
   Save,
+  Users,
+  Crown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { toast } from "sonner";
 import {
   addTelegramBot,
@@ -32,6 +43,8 @@ import { createApiToken, listApiTokens, revokeApiToken } from "@/lib/api-tokens.
 import {
   getAdminSettings,
   getAdminStatus,
+  listAllUsers,
+  toggleUserAdmin,
   updateAdminSettings,
 } from "@/lib/admin-settings.functions";
 
@@ -67,6 +80,7 @@ function Page() {
           </p>
         </section>
         <AdminSettings />
+        <UserManagement />
         <BrowserExtension />
         <TelegramBots />
       </main>
@@ -671,6 +685,133 @@ function AdminSettings() {
           </Button>
         </div>
       </form>
+    </section>
+  );
+}
+
+function UserManagement() {
+  const status = useServerFn(getAdminStatus);
+  const list = useServerFn(listAllUsers);
+  const toggle = useServerFn(toggleUserAdmin);
+  const qc = useQueryClient();
+
+  const statusQ = useQuery({ queryKey: ["admin-status"], queryFn: () => status() });
+  const usersQ = useQuery({
+    queryKey: ["admin-users"],
+    queryFn: () => list(),
+    enabled: statusQ.data?.isAdmin === true,
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: (vars: { user_id: string; is_admin: boolean }) => toggle({ data: vars }),
+    onSuccess: (res) => {
+      toast.success(res.is_admin ? "Admin granted" : "Admin revoked");
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Hide entirely for non-admin users.
+  if (!statusQ.data?.isAdmin) return null;
+
+  const users = usersQ.data?.users ?? [];
+  const total = usersQ.data?.total ?? 0;
+
+  return (
+    <section className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-6">
+      <div className="flex items-start gap-3">
+        <div className="grid h-10 w-10 place-items-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
+          <Users className="h-5 w-5" />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="font-display text-lg font-semibold">User management</h3>
+            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">
+              Admin only
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            All users sign up on the same PUBLIC Supabase project. Grant another user admin access
+            to share runtime settings (AI key, public app URL, user management). The deployment
+            owner (ADMIN_EMAIL) is always admin and cannot be revoked.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6 flex items-center justify-between rounded-lg border border-border/60 bg-background/60 px-4 py-3">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Total users</p>
+          <p className="mt-0.5 font-display text-2xl font-semibold">{total}</p>
+        </div>
+        {usersQ.isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-lg border border-border/60 bg-background/60">
+        {usersQ.isLoading ? (
+          <div className="p-6 text-center text-sm text-muted-foreground">Loading users…</div>
+        ) : users.length === 0 ? (
+          <div className="p-6 text-center text-sm text-muted-foreground">No users yet.</div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead className="hidden sm:table-cell">Joined</TableHead>
+                <TableHead className="w-32 text-right">Admin</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.map((u) => {
+                const pending = toggleMut.isPending && toggleMut.variables?.user_id === u.id;
+                return (
+                  <TableRow key={u.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium">{u.email ?? "—"}</span>
+                        {u.is_personal_admin && (
+                          <span
+                            title="Deployment owner (ADMIN_EMAIL)"
+                            className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400"
+                          >
+                            <Crown className="h-3 w-3" />
+                            Owner
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(u.created_at).toLocaleDateString()}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {pending && (
+                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                        )}
+                        <Switch
+                          checked={u.is_admin}
+                          disabled={u.is_personal_admin || toggleMut.isPending}
+                          onCheckedChange={(checked) =>
+                            toggleMut.mutate({ user_id: u.id, is_admin: checked })
+                          }
+                          aria-label={`Toggle admin for ${u.email ?? u.id}`}
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+
+      <p className="mt-3 text-xs text-muted-foreground">
+        Granted admins can see this section, edit the shared AI key, and grant or revoke admin for
+        other users. They do NOT route data to the personal Supabase project — only the ADMIN_EMAIL
+        user does.
+      </p>
     </section>
   );
 }

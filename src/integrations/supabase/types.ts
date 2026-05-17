@@ -194,6 +194,7 @@ export type Database = {
           created_at: string;
           email: string | null;
           id: string;
+          is_admin: boolean;
           username: string | null;
         };
         Insert: {
@@ -201,6 +202,7 @@ export type Database = {
           created_at?: string;
           email?: string | null;
           id: string;
+          is_admin?: boolean;
           username?: string | null;
         };
         Update: {
@@ -208,7 +210,38 @@ export type Database = {
           created_at?: string;
           email?: string | null;
           id?: string;
+          is_admin?: boolean;
           username?: string | null;
+        };
+        Relationships: [];
+      };
+      admin_settings: {
+        Row: {
+          ai_base_url: string | null;
+          ai_model: string | null;
+          google_ai_api_key: string | null;
+          id: number;
+          public_app_url: string | null;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          ai_base_url?: string | null;
+          ai_model?: string | null;
+          google_ai_api_key?: string | null;
+          id?: number;
+          public_app_url?: string | null;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          ai_base_url?: string | null;
+          ai_model?: string | null;
+          google_ai_api_key?: string | null;
+          id?: number;
+          public_app_url?: string | null;
+          updated_at?: string;
+          updated_by?: string | null;
         };
         Relationships: [];
       };
@@ -304,7 +337,15 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      get_all_users: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          email: string;
+          created_at: string;
+          is_admin: boolean;
+        }[];
+      };
     };
     Enums: {
       [_ in never]: never;

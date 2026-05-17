@@ -99,22 +99,28 @@ export function isAdminEmail(email: string | null | undefined): boolean {
 export interface DataClientContext {
   /** User-JWT-bound PUBLIC client (RLS enforced). Always present. */
   publicClient: SupabaseClient<Database>;
-  /** True when caller is the ADMIN_EMAIL user. */
-  isAdmin: boolean;
+  /**
+   * True only when the caller's email exactly matches the configured
+   * ADMIN_EMAIL env var. This is the **owner** of the deployment — the
+   * single user whose data is routed to PERSONAL Supabase. Granted admins
+   * (profiles.is_admin = true but a different email) are NOT personal
+   * admins and continue to live on PUBLIC.
+   */
+  isPersonalAdmin: boolean;
 }
 
 /**
  * Returns the right Supabase client for user data tables (links, collections,
  * insights, etc.).
  *
- * - If caller is admin AND PERSONAL_* env vars are configured: returns the
- *   PERSONAL service-role client. Queries MUST manually scope by owner_id —
- *   service-role bypasses RLS.
+ * - If caller is the personal admin (ADMIN_EMAIL) AND PERSONAL_* env vars
+ *   are configured: returns the PERSONAL service-role client. Queries MUST
+ *   manually scope by owner_id — service-role bypasses RLS.
  * - Otherwise: returns the user-JWT-bound PUBLIC client. RLS will enforce
  *   owner_id automatically.
  */
 export function getDataClient(ctx: DataClientContext): SupabaseClient<Database> {
-  if (ctx.isAdmin) {
+  if (ctx.isPersonalAdmin) {
     const personal = getPersonalAdminClient();
     if (personal) return personal;
   }
@@ -122,12 +128,12 @@ export function getDataClient(ctx: DataClientContext): SupabaseClient<Database> 
 }
 
 /**
- * True when the resolved data client is service-role (admin on PERSONAL).
- * Server functions use this to know whether they must add a manual
- * `.eq("owner_id", userId)` filter.
+ * True when the resolved data client is service-role (personal admin on
+ * PERSONAL). Server functions use this to know whether they must add a
+ * manual `.eq("owner_id", userId)` filter.
  */
 export function dataClientNeedsManualScoping(ctx: DataClientContext): boolean {
-  return ctx.isAdmin && getPersonalAdminClient() !== null;
+  return ctx.isPersonalAdmin && getPersonalAdminClient() !== null;
 }
 
 /**
