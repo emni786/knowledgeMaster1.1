@@ -5,7 +5,7 @@ import tsConfigPaths from "vite-tsconfig-paths";
 import tailwindcss from "@tailwindcss/vite";
 import { cloudflare } from "@cloudflare/vite-plugin";
 
-// Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
+// Redirect TanStack Start's bundled server entry to src/server.cloudflare.ts (our SSR error wrapper for Cloudflare Workers).
 export default defineConfig(({ command }) => ({
   server: {
     host: true,
@@ -25,8 +25,8 @@ export default defineConfig(({ command }) => ({
     tsConfigPaths(),
     tailwindcss(),
     tanstackStart({
-      // Use custom SSR error wrapper locally/Cloudflare; default Nitro entry on Vercel.
-      server: process.env.VERCEL ? undefined : { entry: "server" },
+      // Use custom SSR error wrapper for Cloudflare Workers; default Nitro entry on Vercel.
+      server: process.env.VERCEL ? undefined : { entry: "server.cloudflare" },
     }),
     viteReact(),
     // The Cloudflare plugin is only needed for production builds targeting Workers.
