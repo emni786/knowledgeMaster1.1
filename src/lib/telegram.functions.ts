@@ -38,8 +38,10 @@ async function publicWebhookUrl(host: string, botId: string): Promise<string> {
 export const listTelegramBots = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase } = context;
-    const { data, error } = await supabase
+    // telegram_bots is auth-source — always on PUBLIC Supabase. RLS on the
+    // user-JWT-bound publicClient scopes results to the current user.
+    const { publicClient } = context;
+    const { data, error } = await publicClient
       .from("telegram_bots" as never)
       .select("id, bot_username, bot_id, active, last_error, created_at")
       .order("created_at", { ascending: false });
@@ -69,7 +71,7 @@ export const addTelegramBot = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
+    const { publicClient, userId } = context;
 
     // Validate token via getMe
     const meRes = await fetch(`${TG_API}/bot${data.bot_token}/getMe`);
@@ -82,7 +84,8 @@ export const addTelegramBot = createServerFn({ method: "POST" })
       throw new Error(meJson.description || "Telegram rejected the token");
     }
 
-    const { data: row, error } = await supabase
+    // telegram_bots is auth-source — always on PUBLIC Supabase.
+    const { data: row, error } = await publicClient
       .from("telegram_bots" as never)
       .insert({
         owner_id: userId,
@@ -109,7 +112,7 @@ export const addTelegramBot = createServerFn({ method: "POST" })
     });
     const setJson = (await setRes.json()) as { ok: boolean; description?: string };
     if (!setJson.ok) {
-      await supabase
+      await publicClient
         .from("telegram_bots" as never)
         .update({ last_error: setJson.description ?? "setWebhook failed" } as never)
         .eq("id", created.id);
@@ -123,8 +126,9 @@ export const testTelegramWebhook = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { data: row, error } = await supabase
+    // telegram_bots is auth-source — always on PUBLIC Supabase.
+    const { publicClient } = context;
+    const { data: row, error } = await publicClient
       .from("telegram_bots" as never)
       .select("bot_token, webhook_secret, id")
       .eq("id", data.id)
@@ -151,7 +155,7 @@ export const testTelegramWebhook = createServerFn({ method: "POST" })
     };
     if (!infoRes.ok || !infoJson.ok || !infoJson.result) {
       const msg = infoJson.description || "Failed to fetch webhook info";
-      await supabase
+      await publicClient
         .from("telegram_bots" as never)
         .update({ last_error: msg } as never)
         .eq("id", bot.id);
@@ -175,7 +179,7 @@ export const testTelegramWebhook = createServerFn({ method: "POST" })
       const setJson = (await setRes.json()) as { ok: boolean; description?: string };
       if (!setJson.ok) {
         const msg = setJson.description || "Failed to re-register webhook";
-        await supabase
+        await publicClient
           .from("telegram_bots" as never)
           .update({ last_error: msg } as never)
           .eq("id", bot.id);
@@ -188,7 +192,7 @@ export const testTelegramWebhook = createServerFn({ method: "POST" })
       ? `${info.last_error_message}${info.last_error_date ? ` (${new Date(info.last_error_date * 1000).toISOString()})` : ""}`
       : null;
 
-    await supabase
+    await publicClient
       .from("telegram_bots" as never)
       .update({ last_error: lastError } as never)
       .eq("id", bot.id);
@@ -209,8 +213,9 @@ export const deleteTelegramBot = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { data: row } = await supabase
+    // telegram_bots is auth-source — always on PUBLIC Supabase.
+    const { publicClient } = context;
+    const { data: row } = await publicClient
       .from("telegram_bots" as never)
       .select("bot_token")
       .eq("id", data.id)
@@ -219,7 +224,7 @@ export const deleteTelegramBot = createServerFn({ method: "POST" })
     if (token) {
       await fetch(`${TG_API}/bot${token}/deleteWebhook`, { method: "POST" }).catch(() => {});
     }
-    const { error } = await supabase
+    const { error } = await publicClient
       .from("telegram_bots" as never)
       .delete()
       .eq("id", data.id);

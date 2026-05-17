@@ -19,7 +19,8 @@ async function init() {
     $("setup").style.display = "block";
     if (normalized) $("apiUrl").value = normalized;
     if (token) $("token").value = token;
-    if (normalized) $("settingsHint").innerHTML = `<a href="${normalized}/settings" target="_blank">Settings</a>`;
+    if (normalized)
+      $("settingsHint").innerHTML = `<a href="${normalized}/settings" target="_blank">Settings</a>`;
     $("saveSetup").addEventListener("click", saveSetup);
     return;
   }

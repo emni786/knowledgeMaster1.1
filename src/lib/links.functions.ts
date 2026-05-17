@@ -201,11 +201,12 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
     z.object({ urls: z.array(z.string().url()).min(1).max(20) }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
+    const { supabase, publicClient, userId, dataNeedsScoping } = context;
 
     const urls = Array.from(new Set(data.urls.map((u) => u.trim()).filter(Boolean)));
 
-    // 1) Insert pending rows immediately
+    // 1) Insert pending rows immediately. owner_id is always set explicitly
+    //    so this row insert is safe on both PUBLIC-RLS and PERSONAL-service-role.
     const pendingRows = urls.map((url) => {
       const norm = normalizeUrl(url);
       const domain = getDomain(norm);
@@ -233,7 +234,10 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
       (inserted ?? []).map(async (row) => {
         try {
           const { analysis } = await analyzeOne(row.url);
-          await supabase
+          // When admin uses PERSONAL (service-role) we MUST scope by owner_id
+          // because RLS is bypassed. For non-admin on PUBLIC, RLS already
+          // scopes by auth.uid() but the extra filter is harmless.
+          const upd = supabase
             .from("links")
             .update({
               title: analysis.title,
@@ -246,9 +250,11 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
               updated_at: new Date().toISOString(),
             })
             .eq("id", row.id);
+          if (dataNeedsScoping) upd.eq("owner_id", userId);
+          await upd;
           return { url: row.url, title: analysis.title, summary: analysis.summary, ok: true };
         } catch (e) {
-          await supabase
+          const upd = supabase
             .from("links")
             .update({
               status: "failed",
@@ -256,14 +262,18 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
               updated_at: new Date().toISOString(),
             })
             .eq("id", row.id);
+          if (dataNeedsScoping) upd.eq("owner_id", userId);
+          await upd;
           return { url: row.url, title: null, summary: null, ok: false };
         }
       }),
     );
 
-    // 3) Forward saved links to user's Telegram bot(s) — fire and forget
+    // 3) Forward saved links to user's Telegram bot(s) — fire and forget.
+    //    telegram_bots is an auth-source table, always on PUBLIC Supabase,
+    //    so we read it via publicClient (RLS-bound to the current user).
     try {
-      const { data: bots } = await supabase
+      const { data: bots } = await publicClient
         .from("telegram_bots")
         .select("bot_token, default_chat_id, active")
         .eq("active", true);
@@ -300,26 +310,162 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
     return { count: inserted?.length ?? 0 };
   });
 
+// ---------------------------------------------------------------------------
+// CRUD server functions for `links`. Frontend code (src/lib/api/links.ts)
+// calls these so reads/writes get routed to the right Supabase database
+// (PERSONAL for admin, PUBLIC otherwise).
+// ---------------------------------------------------------------------------
+
+export const listLinks = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId, dataNeedsScoping } = context;
+    let q = supabase.from("links").select("*").order("created_at", { ascending: false });
+    if (dataNeedsScoping) q = q.eq("owner_id", userId);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const updateLinkServer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        patch: z.record(z.string(), z.unknown()),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId, dataNeedsScoping } = context;
+    const upd = supabase
+      .from("links")
+      .update({ ...data.patch, updated_at: new Date().toISOString() } as never)
+      .eq("id", data.id);
+    if (dataNeedsScoping) upd.eq("owner_id", userId);
+    const { error } = await upd;
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const softDeleteLinkServer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId, dataNeedsScoping } = context;
+    const upd = supabase
+      .from("links")
+      .update({ deleted_at: new Date().toISOString() } as never)
+      .eq("id", data.id);
+    if (dataNeedsScoping) upd.eq("owner_id", userId);
+    const { error } = await upd;
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const softDeleteManyLinksServer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ ids: z.array(z.string().uuid()) }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId, dataNeedsScoping } = context;
+    const upd = supabase
+      .from("links")
+      .update({ deleted_at: new Date().toISOString() } as never)
+      .in("id", data.ids);
+    if (dataNeedsScoping) upd.eq("owner_id", userId);
+    const { error } = await upd;
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const restoreLinkServer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId, dataNeedsScoping } = context;
+    const upd = supabase
+      .from("links")
+      .update({ deleted_at: null } as never)
+      .eq("id", data.id);
+    if (dataNeedsScoping) upd.eq("owner_id", userId);
+    const { error } = await upd;
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const permanentlyDeleteLinkServer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId, dataNeedsScoping } = context;
+    const del = supabase.from("links").delete().eq("id", data.id);
+    if (dataNeedsScoping) del.eq("owner_id", userId);
+    const { error } = await del;
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const emptyTrashServer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId, dataNeedsScoping } = context;
+    const del = supabase.from("links").delete().not("deleted_at", "is", null);
+    if (dataNeedsScoping) del.eq("owner_id", userId);
+    const { error } = await del;
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const bulkAddTagServer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        ids: z.array(z.string().uuid()).min(1),
+        tag: z.string().min(1).max(40),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId, dataNeedsScoping } = context;
+    const sel = supabase.from("links").select("id, tags").in("id", data.ids);
+    if (dataNeedsScoping) sel.eq("owner_id", userId);
+    const { data: rows, error } = await sel;
+    if (error) throw new Error(error.message);
+    for (const row of (rows ?? []) as Array<{ id: string; tags: string[] }>) {
+      const tags = Array.from(new Set([...(row.tags || []), data.tag]));
+      const upd = supabase
+        .from("links")
+        .update({ tags } as never)
+        .eq("id", row.id);
+      if (dataNeedsScoping) upd.eq("owner_id", userId);
+      await upd;
+    }
+    return { ok: true };
+  });
+
 export const reanalyzeLink = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { data: row, error } = await supabase
-      .from("links")
-      .select("id, url")
-      .eq("id", data.id)
-      .single();
+    const { supabase, userId, dataNeedsScoping } = context;
+    // Scope by owner_id when using PERSONAL service-role (RLS bypassed).
+    const sel = supabase.from("links").select("id, url").eq("id", data.id);
+    if (dataNeedsScoping) sel.eq("owner_id", userId);
+    const { data: row, error } = await sel.single();
     if (error || !row) throw new Error(error?.message ?? "Link not found");
 
-    await supabase
+    const pendingUpd = supabase
       .from("links")
       .update({ status: "pending", error_message: null })
       .eq("id", row.id);
+    if (dataNeedsScoping) pendingUpd.eq("owner_id", userId);
+    await pendingUpd;
 
     try {
       const { analysis } = await analyzeOne(row.url);
-      await supabase
+      const readyUpd = supabase
         .from("links")
         .update({
           title: analysis.title,
@@ -332,9 +478,11 @@ export const reanalyzeLink = createServerFn({ method: "POST" })
           updated_at: new Date().toISOString(),
         })
         .eq("id", row.id);
+      if (dataNeedsScoping) readyUpd.eq("owner_id", userId);
+      await readyUpd;
       return { ok: true };
     } catch (e) {
-      await supabase
+      const failUpd = supabase
         .from("links")
         .update({
           status: "failed",
@@ -342,6 +490,8 @@ export const reanalyzeLink = createServerFn({ method: "POST" })
           updated_at: new Date().toISOString(),
         })
         .eq("id", row.id);
+      if (dataNeedsScoping) failUpd.eq("owner_id", userId);
+      await failUpd;
       throw e;
     }
   });

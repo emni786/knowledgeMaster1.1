@@ -8,7 +8,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { publicAdmin } from "@/integrations/supabase/dual-client.server";
 import { invalidateAdminSettingsCache, readAdminSettings } from "@/lib/runtime-config";
 
 // Sentinel returned for sensitive fields (e.g. the AI key) so the client never
@@ -92,7 +92,9 @@ export const updateAdminSettings = createServerFn({ method: "POST" })
       return { ok: true, updated: 0 };
     }
 
-    const { error } = await supabaseAdmin
+    // admin_settings is shared (auth-source) — always on PUBLIC Supabase
+    // regardless of which user is editing it.
+    const { error } = await publicAdmin
       .from("admin_settings" as never)
       .update({ ...patch, updated_by: context.userId } as never)
       .eq("id", 1);

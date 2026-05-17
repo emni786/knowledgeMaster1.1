@@ -33,10 +33,20 @@ function ResetPage() {
           <Logo size={48} />
           <h1 className="font-mono text-lg font-semibold">Set a new password</h1>
         </div>
-        <form onSubmit={submit} className="space-y-3 rounded-2xl border border-border/50 bg-card p-6">
+        <form
+          onSubmit={submit}
+          className="space-y-3 rounded-2xl border border-border/50 bg-card p-6"
+        >
           <div className="space-y-1.5">
             <Label className="font-mono text-[11px] uppercase tracking-wider">New password</Label>
-            <Input className="h-9 font-mono text-sm" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Input
+              className="h-9 font-mono text-sm"
+              type="password"
+              required
+              minLength={6}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
           </div>
           <Button type="submit" disabled={loading} className="w-full font-mono text-xs">
             {loading ? "Updating..." : "Update password"}

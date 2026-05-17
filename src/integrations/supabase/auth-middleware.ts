@@ -1,7 +1,12 @@
 import { createMiddleware } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
-import { createClient } from "@supabase/supabase-js";
-import { supabaseAdmin } from "./client.server";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  publicAdmin,
+  getDataClient,
+  dataClientNeedsManualScoping,
+  isAdminEmail,
+} from "./dual-client.server";
 import type { Database } from "./types";
 
 // In-process cache keyed by user id so we don't hit the DB to re-sync the
@@ -11,9 +16,7 @@ const adminSyncCache = new Map<string, number>();
 const ADMIN_SYNC_INTERVAL_MS = 5 * 60_000;
 
 async function syncAdminFlag(userId: string, email: string | undefined | null): Promise<boolean> {
-  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const userEmail = email?.trim().toLowerCase();
-  const shouldBeAdmin = Boolean(adminEmail && userEmail && adminEmail === userEmail);
+  const shouldBeAdmin = isAdminEmail(email);
 
   const lastSync = adminSyncCache.get(userId);
   if (lastSync && Date.now() - lastSync < ADMIN_SYNC_INTERVAL_MS) {
@@ -21,7 +24,10 @@ async function syncAdminFlag(userId: string, email: string | undefined | null): 
   }
 
   try {
-    await supabaseAdmin
+    // profiles.is_admin lives on PUBLIC Supabase (auth-source table) for all
+    // users, including the admin. The admin's auth.users row is also on
+    // PUBLIC since PUBLIC is the single auth source.
+    await publicAdmin
       .from("profiles" as never)
       .update({ is_admin: shouldBeAdmin } as never)
       .eq("id", userId);
@@ -69,20 +75,27 @@ export const requireSupabaseAuth = createMiddleware({ type: "function" }).server
       throw new Error("Unauthorized: No token provided");
     }
 
-    const supabase = createClient<Database>(SUPABASE_URL!, SUPABASE_PUBLISHABLE_KEY!, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
+    // PUBLIC Supabase is the single auth source. The user's JWT is verified
+    // against PUBLIC, and `publicClient` is bound to the user's JWT so
+    // PUBLIC-RLS queries are auto-scoped to them.
+    const publicClient: SupabaseClient<Database> = createClient<Database>(
+      SUPABASE_URL!,
+      SUPABASE_PUBLISHABLE_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+        auth: {
+          storage: undefined,
+          persistSession: false,
+          autoRefreshToken: false,
         },
       },
-      auth: {
-        storage: undefined,
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    });
+    );
 
-    const { data, error } = await supabase.auth.getClaims(token);
+    const { data, error } = await publicClient.auth.getClaims(token);
     if (error || !data?.claims) {
       throw new Error("Unauthorized: Invalid token");
     }
@@ -95,12 +108,30 @@ export const requireSupabaseAuth = createMiddleware({ type: "function" }).server
     const email = typeof data.claims.email === "string" ? data.claims.email : null;
     const isAdmin = await syncAdminFlag(userId, email);
 
+    // Resolve the data client based on admin status + PERSONAL_* env config.
+    const dataClient = getDataClient({ publicClient, isAdmin });
+    const dataNeedsScoping = dataClientNeedsManualScoping({ publicClient, isAdmin });
+
     return next({
       context: {
-        supabase,
+        // Back-compat alias: `supabase` is the data client (admin → PERSONAL
+        // service-role; everyone else → PUBLIC + user JWT with RLS).
+        supabase: dataClient,
+        // Auth-source client: PUBLIC + user JWT (RLS-bound). Use this for
+        // profiles, api_tokens, telegram_bots, admin_settings reads. Writes
+        // to these tables that require service-role should use `publicAdmin`
+        // imported directly.
+        publicClient,
         userId,
+        email,
         claims: data.claims,
         isAdmin,
+        /**
+         * True when `supabase` is a service-role client (admin on PERSONAL).
+         * Server functions MUST add `.eq("owner_id", userId)` to all
+         * user-data queries when this is true, since RLS is bypassed.
+         */
+        dataNeedsScoping,
       },
     });
   },

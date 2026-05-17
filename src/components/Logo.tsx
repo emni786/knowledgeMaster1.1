@@ -18,7 +18,9 @@ export function Wordmark({ collapsed = false }: { collapsed?: boolean }) {
       {!collapsed && (
         <div className="flex flex-col leading-tight">
           <span className="font-mono text-sm font-semibold tracking-tight">Knowledgemaster</span>
-          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">link librarian</span>
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            link librarian
+          </span>
         </div>
       )}
     </div>

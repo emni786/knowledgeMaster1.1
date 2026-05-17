@@ -1,67 +1,59 @@
-import { supabase } from "@/integrations/supabase/client";
+// Frontend API for links. All reads/writes go through server functions so
+// they get routed to the right Supabase project (PERSONAL for admin,
+// PUBLIC otherwise). The frontend never talks to a data DB directly.
+
 import type { LinkRow } from "@/lib/types";
-import { analyzeAndSaveLinks, reanalyzeLink } from "@/lib/links.functions";
+import {
+  analyzeAndSaveLinks,
+  reanalyzeLink,
+  listLinks,
+  updateLinkServer,
+  softDeleteLinkServer,
+  softDeleteManyLinksServer,
+  restoreLinkServer,
+  permanentlyDeleteLinkServer,
+  emptyTrashServer,
+  bulkAddTagServer,
+} from "@/lib/links.functions";
 
 export async function fetchLinks(): Promise<LinkRow[]> {
-  const { data, error } = await supabase
-    .from("links" as never)
-    .select("*")
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as unknown as LinkRow[];
+  const rows = await listLinks();
+  return rows as unknown as LinkRow[];
 }
 
 export async function addLinks(urls: string[]): Promise<LinkRow[]> {
   const cleaned = urls.map((u) => u.trim()).filter(Boolean);
   if (!cleaned.length) return [];
   await analyzeAndSaveLinks({ data: { urls: cleaned } });
-  // Realtime + react-query will refetch; return empty (caller relies on cache).
+  // React-query will refetch via `fetchLinks` after invalidation.
   return [];
 }
 
 export async function updateLink(id: string, patch: Partial<LinkRow>): Promise<void> {
-  const { error } = await supabase
-    .from("links" as never)
-    .update({ ...patch, updated_at: new Date().toISOString() } as never)
-    .eq("id", id);
-  if (error) throw error;
+  await updateLinkServer({
+    data: { id, patch: patch as Record<string, unknown> },
+  });
 }
 
 export async function softDeleteLink(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("links" as never)
-    .update({ deleted_at: new Date().toISOString() } as never)
-    .eq("id", id);
-  if (error) throw error;
+  await softDeleteLinkServer({ data: { id } });
 }
 
 export async function softDeleteMany(ids: string[]): Promise<void> {
-  const { error } = await supabase
-    .from("links" as never)
-    .update({ deleted_at: new Date().toISOString() } as never)
-    .in("id", ids);
-  if (error) throw error;
+  if (!ids.length) return;
+  await softDeleteManyLinksServer({ data: { ids } });
 }
 
 export async function restoreLink(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("links" as never)
-    .update({ deleted_at: null } as never)
-    .eq("id", id);
-  if (error) throw error;
+  await restoreLinkServer({ data: { id } });
 }
 
 export async function permanentlyDelete(id: string): Promise<void> {
-  const { error } = await supabase.from("links" as never).delete().eq("id", id);
-  if (error) throw error;
+  await permanentlyDeleteLinkServer({ data: { id } });
 }
 
 export async function emptyTrash(): Promise<void> {
-  const { error } = await supabase
-    .from("links" as never)
-    .delete()
-    .not("deleted_at", "is", null);
-  if (error) throw error;
+  await emptyTrashServer();
 }
 
 export async function togglePin(id: string, pinned: boolean): Promise<void> {
@@ -73,20 +65,6 @@ export async function retryAnalysis(id: string): Promise<void> {
 }
 
 export async function bulkAddTag(ids: string[], tag: string): Promise<void> {
-  // fetch existing tags then merge
-  const { data, error } = await supabase
-    .from("links" as never)
-    .select("id, tags")
-    .in("id", ids);
-  if (error) throw error;
-  const updates = (data as { id: string; tags: string[] }[]).map((row) => ({
-    id: row.id,
-    tags: Array.from(new Set([...(row.tags || []), tag])),
-  }));
-  for (const u of updates) {
-    await supabase
-      .from("links" as never)
-      .update({ tags: u.tags } as never)
-      .eq("id", u.id);
-  }
+  if (!ids.length || !tag) return;
+  await bulkAddTagServer({ data: { ids, tag } });
 }

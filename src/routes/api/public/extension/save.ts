@@ -1,14 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { createClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
 import { z } from "zod";
 import { chatCompletion, getAIConfig } from "@/lib/ai";
-
-function admin() {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-    auth: { persistSession: false },
-  });
-}
+import { publicAdmin, getDataClientForOwnerId } from "@/integrations/supabase/dual-client.server";
 
 function normalizeUrl(u: string): string {
   try {
@@ -102,8 +96,8 @@ export const Route = createFileRoute("/api/public/extension/save")({
           });
 
         const token_hash = createHash("sha256").update(raw).digest("hex");
-        const sb = admin();
-        const { data: tok } = await sb
+        // api_tokens lives on PUBLIC Supabase (auth-source).
+        const { data: tok } = await publicAdmin
           .from("api_tokens")
           .select("id, owner_id")
           .eq("token_hash", token_hash)
@@ -126,8 +120,12 @@ export const Route = createFileRoute("/api/public/extension/save")({
         const norm = normalizeUrl(url);
         const dom = domainOf(norm);
 
-        // Dedupe
-        const { data: existing } = await sb
+        // links lives on PERSONAL Supabase when the owner is the configured
+        // admin (and PERSONAL_* env vars are set), otherwise on PUBLIC.
+        const dataDb = await getDataClientForOwnerId(tok.owner_id);
+
+        // Dedupe (scoped by owner_id on the right database).
+        const { data: existing } = await dataDb
           .from("links")
           .select("id")
           .eq("owner_id", tok.owner_id)
@@ -135,7 +133,7 @@ export const Route = createFileRoute("/api/public/extension/save")({
           .is("deleted_at", null)
           .maybeSingle();
         if (existing) {
-          await sb
+          await publicAdmin
             .from("api_tokens")
             .update({ last_used_at: new Date().toISOString() })
             .eq("id", tok.id);
@@ -146,7 +144,7 @@ export const Route = createFileRoute("/api/public/extension/save")({
         }
 
         const ai = await summarize(url, parsed.data.title);
-        const { error } = await sb.from("links").insert({
+        const { error } = await dataDb.from("links").insert({
           owner_id: tok.owner_id,
           url,
           normalized_url: norm,
@@ -165,7 +163,7 @@ export const Route = createFileRoute("/api/public/extension/save")({
             headers: { "content-type": "application/json", ...CORS },
           });
 
-        await sb
+        await publicAdmin
           .from("api_tokens")
           .update({ last_used_at: new Date().toISOString() })
           .eq("id", tok.id);

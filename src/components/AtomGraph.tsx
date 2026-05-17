@@ -52,7 +52,12 @@ function Atom({ atom, idx }: { atom: Atom; idx: number }) {
   return (
     <div className="flex flex-col items-center">
       <div className="relative" style={{ width: size, height: size, perspective: "600px" }}>
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="overflow-visible">
+        <svg
+          width={size}
+          height={size}
+          viewBox={`0 0 ${size} ${size}`}
+          className="overflow-visible"
+        >
           <defs>
             <radialGradient id={`nucleus-${idx}`} cx="35%" cy="35%">
               <stop offset="0%" stopColor="hsl(var(--primary) / 0.95)" />
@@ -61,13 +66,19 @@ function Atom({ atom, idx }: { atom: Atom; idx: number }) {
             </radialGradient>
             <filter id={`glow-${idx}`}>
               <feGaussianBlur stdDeviation="3" result="blur" />
-              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
             </filter>
           </defs>
 
           {/* Orbits */}
           {orbits.map((o, oi) => (
-            <g key={oi} style={{ transformOrigin: `${cx}px ${cy}px`, transform: `rotate(${o.rot}deg)` }}>
+            <g
+              key={oi}
+              style={{ transformOrigin: `${cx}px ${cy}px`, transform: `rotate(${o.rot}deg)` }}
+            >
               <ellipse
                 cx={cx}
                 cy={cy}
@@ -109,7 +120,13 @@ function Atom({ atom, idx }: { atom: Atom; idx: number }) {
           })}
 
           {/* Nucleus */}
-          <circle cx={cx} cy={cy} r={nucleusR} fill={`url(#nucleus-${idx})`} filter={`url(#glow-${idx})`} />
+          <circle
+            cx={cx}
+            cy={cy}
+            r={nucleusR}
+            fill={`url(#nucleus-${idx})`}
+            filter={`url(#glow-${idx})`}
+          />
           <text
             x={cx}
             y={cy + 4}

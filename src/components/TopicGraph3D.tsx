@@ -2,30 +2,45 @@ import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import * as THREE from "three";
 import SpriteText from "three-spritetext";
 import type { LinkRow } from "@/lib/types";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import {
-  ExternalLink, Hash, Link2, Loader2, Sparkles,
-  Search, Clock, Route as RouteIcon, Boxes, BarChart3, X,
+  ExternalLink,
+  Hash,
+  Link2,
+  Loader2,
+  Sparkles,
+  Search,
+  Clock,
+  Route as RouteIcon,
+  Boxes,
+  BarChart3,
+  X,
 } from "lucide-react";
 import { faviconFor, getDomain } from "@/lib/url";
 
 const ForceGraph3D = lazy(() =>
-  import("react-force-graph-3d").then((m) => ({ default: m.default as any }))
+  import("react-force-graph-3d").then((m) => ({ default: m.default as any })),
 ) as any;
 
 // Planet palette — 8 named tag groups
 const PLANETS = [
-  { name: "Saturn Gold",    color: "#fbbf24", ring: "#f59e0b" },
-  { name: "Mars Red",       color: "#ef4444", ring: "#b91c1c" },
-  { name: "Pluto Purple",   color: "#a78bfa", ring: "#7c3aed" },
-  { name: "Uranus Cyan",    color: "#22d3ee", ring: "#0891b2" },
-  { name: "Neptune Blue",   color: "#3b82f6", ring: "#1d4ed8" },
-  { name: "Earth Green",    color: "#34d399", ring: "#059669" },
+  { name: "Saturn Gold", color: "#fbbf24", ring: "#f59e0b" },
+  { name: "Mars Red", color: "#ef4444", ring: "#b91c1c" },
+  { name: "Pluto Purple", color: "#a78bfa", ring: "#7c3aed" },
+  { name: "Uranus Cyan", color: "#22d3ee", ring: "#0891b2" },
+  { name: "Neptune Blue", color: "#3b82f6", ring: "#1d4ed8" },
+  { name: "Earth Green", color: "#34d399", ring: "#059669" },
   { name: "Jupiter Orange", color: "#fb923c", ring: "#ea580c" },
-  { name: "Venus Pink",     color: "#f472b6", ring: "#db2777" },
+  { name: "Venus Pink", color: "#f472b6", ring: "#db2777" },
 ];
 
 type GNode = {
@@ -213,7 +228,10 @@ export function TopicGraph3D({
         if (seen.has(cur)) continue;
         seen.set(cur, cluster);
         const adj = adjacency.get(cur);
-        if (adj) adj.forEach((_, nb) => { if (!seen.has(nb)) stack.push(nb); });
+        if (adj)
+          adj.forEach((_, nb) => {
+            if (!seen.has(nb)) stack.push(nb);
+          });
       }
       cluster++;
     });
@@ -234,13 +252,19 @@ export function TopicGraph3D({
       const adj = adjacency.get(cur);
       if (!adj) continue;
       adj.forEach((_, nb) => {
-        if (!prev.has(nb)) { prev.set(nb, cur); queue.push(nb); }
+        if (!prev.has(nb)) {
+          prev.set(nb, cur);
+          queue.push(nb);
+        }
       });
     }
     if (!prev.has(pathB)) return new Set<string>();
     const path = new Set<string>();
     let cur: string | null = pathB;
-    while (cur) { path.add(cur); cur = prev.get(cur) ?? null; }
+    while (cur) {
+      path.add(cur);
+      cur = prev.get(cur) ?? null;
+    }
     return path;
   }, [pathA, pathB, adjacency]);
 
@@ -281,7 +305,11 @@ export function TopicGraph3D({
         }
         starGeo.setAttribute("position", new THREE.BufferAttribute(arr, 3));
         const starMat = new THREE.PointsMaterial({
-          color: 0xffffff, size: 1.6, sizeAttenuation: true, transparent: true, opacity: 0.7,
+          color: 0xffffff,
+          size: 1.6,
+          sizeAttenuation: true,
+          transparent: true,
+          opacity: 0.7,
         });
         const stars = new THREE.Points(starGeo, starMat);
         scene.add(stars);
@@ -290,7 +318,7 @@ export function TopicGraph3D({
     } catch {}
   }, [mounted, displayNodes.length]);
 
-  const openLinks = openTag ? byTag.get(openTag) ?? [] : [];
+  const openLinks = openTag ? (byTag.get(openTag) ?? []) : [];
 
   // Stats
   const stats = useMemo(() => {
@@ -320,11 +348,13 @@ export function TopicGraph3D({
         style={{ height: size.h }}
       >
         {mounted ? (
-          <Suspense fallback={
-            <div className="absolute inset-0 grid place-items-center text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin" />
-            </div>
-          }>
+          <Suspense
+            fallback={
+              <div className="absolute inset-0 grid place-items-center text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+              </div>
+            }
+          >
             <ForceGraph3D
               ref={fgRef}
               width={size.w}
@@ -396,7 +426,10 @@ export function TopicGraph3D({
             <div className="mt-1 grid grid-cols-2 gap-y-1 gap-x-2">
               {PLANETS.map((p) => (
                 <div key={p.name} className="flex items-center gap-1.5">
-                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: p.color }} />
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ background: p.color }}
+                  />
                   <span className="truncate text-slate-300">{p.name}</span>
                 </div>
               ))}
@@ -423,7 +456,9 @@ export function TopicGraph3D({
             </PopoverTrigger>
             <PopoverContent side="top" className="w-72">
               <div className="space-y-2">
-                <div className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">Find a topic</div>
+                <div className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
+                  Find a topic
+                </div>
                 <Input
                   autoFocus
                   placeholder="Type a tag…"
@@ -463,7 +498,9 @@ export function TopicGraph3D({
             </PopoverTrigger>
             <PopoverContent side="top" className="w-72">
               <div className="space-y-3">
-                <div className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">Show links from the last</div>
+                <div className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
+                  Show links from the last
+                </div>
                 <div className="text-2xl font-display font-semibold tabular-nums">
                   {days >= 365 ? "All time" : `${days} days`}
                 </div>
@@ -475,7 +512,9 @@ export function TopicGraph3D({
                   onValueChange={(v) => setDays(v[0])}
                 />
                 <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
-                  <span>7d</span><span>90d</span><span>All</span>
+                  <span>7d</span>
+                  <span>90d</span>
+                  <span>All</span>
                 </div>
               </div>
             </PopoverContent>
@@ -484,20 +523,28 @@ export function TopicGraph3D({
           {/* Path Finder */}
           <Popover>
             <PopoverTrigger asChild>
-              <button className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-white/10 ${pathSet.size > 0 ? "text-violet-300" : ""}`}>
+              <button
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-white/10 ${pathSet.size > 0 ? "text-violet-300" : ""}`}
+              >
                 <RouteIcon className="h-3.5 w-3.5" /> Path Finder
               </button>
             </PopoverTrigger>
             <PopoverContent side="top" className="w-72">
               <div className="space-y-2">
-                <div className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">Trace a path between topics</div>
+                <div className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
+                  Trace a path between topics
+                </div>
                 <select
                   className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm font-mono"
                   value={pathA}
                   onChange={(e) => setPathA(e.target.value)}
                 >
                   <option value="">From…</option>
-                  {displayNodes.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
+                  {displayNodes.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.label}
+                    </option>
+                  ))}
                 </select>
                 <select
                   className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm font-mono"
@@ -505,18 +552,25 @@ export function TopicGraph3D({
                   onChange={(e) => setPathB(e.target.value)}
                 >
                   <option value="">To…</option>
-                  {displayNodes.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
+                  {displayNodes.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.label}
+                    </option>
+                  ))}
                 </select>
                 <div className="text-xs text-muted-foreground">
-                  {pathA && pathB ? (
-                    pathSet.size > 0
+                  {pathA && pathB
+                    ? pathSet.size > 0
                       ? `Path: ${pathSet.size} hops`
                       : "No connection between these topics."
-                  ) : "Pick two topics."}
+                    : "Pick two topics."}
                 </div>
                 {(pathA || pathB) && (
                   <button
-                    onClick={() => { setPathA(""); setPathB(""); }}
+                    onClick={() => {
+                      setPathA("");
+                      setPathB("");
+                    }}
                     className="text-xs flex items-center gap-1 text-muted-foreground hover:text-foreground"
                   >
                     <X className="h-3 w-3" /> Clear
@@ -543,14 +597,27 @@ export function TopicGraph3D({
             </PopoverTrigger>
             <PopoverContent side="top" className="w-64">
               <div className="space-y-2">
-                <div className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">Cosmos stats</div>
+                <div className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
+                  Cosmos stats
+                </div>
                 <div className="grid grid-cols-3 gap-2 text-center">
-                  <div><div className="font-display text-lg font-semibold">{stats.topics}</div><div className="text-[10px] text-muted-foreground uppercase">Planets</div></div>
-                  <div><div className="font-display text-lg font-semibold">{stats.edges}</div><div className="text-[10px] text-muted-foreground uppercase">Edges</div></div>
-                  <div><div className="font-display text-lg font-semibold">{stats.mentions}</div><div className="text-[10px] text-muted-foreground uppercase">Mentions</div></div>
+                  <div>
+                    <div className="font-display text-lg font-semibold">{stats.topics}</div>
+                    <div className="text-[10px] text-muted-foreground uppercase">Planets</div>
+                  </div>
+                  <div>
+                    <div className="font-display text-lg font-semibold">{stats.edges}</div>
+                    <div className="text-[10px] text-muted-foreground uppercase">Edges</div>
+                  </div>
+                  <div>
+                    <div className="font-display text-lg font-semibold">{stats.mentions}</div>
+                    <div className="text-[10px] text-muted-foreground uppercase">Mentions</div>
+                  </div>
                 </div>
                 <div className="pt-1">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1">Top topics</div>
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1">
+                    Top topics
+                  </div>
                   <ul className="space-y-1">
                     {stats.top5.map((n) => (
                       <li key={n.id} className="flex items-center gap-2 text-sm">
@@ -591,7 +658,12 @@ export function TopicGraph3D({
                   rel="noreferrer"
                   className="flex items-start gap-3 rounded-xl border border-border/60 bg-card/40 p-3 hover:bg-primary/5 hover:border-primary/40 transition-colors"
                 >
-                  <img src={faviconFor(l.url)} alt="" className="h-5 w-5 rounded mt-0.5 shrink-0" loading="lazy" />
+                  <img
+                    src={faviconFor(l.url)}
+                    alt=""
+                    className="h-5 w-5 rounded mt-0.5 shrink-0"
+                    loading="lazy"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium truncate">{l.title ?? l.url}</div>
                     <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -604,9 +676,14 @@ export function TopicGraph3D({
                         {l.tags.slice(0, 6).map((t) => (
                           <button
                             key={t}
-                            onClick={(e) => { e.preventDefault(); setOpenTag(t); }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setOpenTag(t);
+                            }}
                             className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                              t === openTag ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                              t === openTag
+                                ? "bg-primary/20 text-primary"
+                                : "bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary"
                             }`}
                           >
                             #{t}
@@ -620,7 +697,9 @@ export function TopicGraph3D({
               </li>
             ))}
             {openLinks.length === 0 && (
-              <li className="text-sm text-muted-foreground py-6 text-center">No links found for this topic.</li>
+              <li className="text-sm text-muted-foreground py-6 text-center">
+                No links found for this topic.
+              </li>
             )}
           </ul>
         </SheetContent>
