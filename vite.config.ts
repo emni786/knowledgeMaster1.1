@@ -4,10 +4,12 @@ import viteReact from "@vitejs/plugin-react";
 import tsConfigPaths from "vite-tsconfig-paths";
 import tailwindcss from "@tailwindcss/vite";
 import { cloudflare } from "@cloudflare/vite-plugin";
+import { nitro } from "nitro/vite";
 
-// Redirect TanStack Start's bundled server entry to src/server.cloudflare.ts (our SSR error wrapper for Cloudflare Workers).
-// On Vercel (detected via the VERCEL env var Vercel sets during its build), we skip the
-// Cloudflare-specific bits and let Nitro use its default server entry instead.
+// Dual build target:
+// - Cloudflare Workers (default): @cloudflare/vite-plugin + src/server.cloudflare.ts entry.
+// - Vercel (when VERCEL env var is set during build): nitro/vite plugin produces
+//   .vercel/output/ which Vercel deploys as a serverless function + static assets.
 export default defineConfig(({ command }) => ({
   server: {
     host: true,
@@ -31,8 +33,8 @@ export default defineConfig(({ command }) => ({
       server: process.env.VERCEL ? undefined : { entry: "server.cloudflare" },
     }),
     viteReact(),
-    // The Cloudflare plugin is only needed for production builds targeting Workers.
-    // Skip on Vercel (VERCEL env var is set by Vercel during build).
+    // Production build plugins, chosen by target:
     ...(command === "build" && !process.env.VERCEL ? [cloudflare()] : []),
+    ...(command === "build" && process.env.VERCEL ? [nitro()] : []),
   ],
 }));
