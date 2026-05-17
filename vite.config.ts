@@ -29,6 +29,7 @@ export default defineConfig(({ command }) => ({
     }),
     viteReact(),
     // The Cloudflare plugin is only needed for production builds targeting Workers.
-    ...(command === "build" ? [cloudflare()] : []),
+    // Skip on Vercel (VERCEL env var is set by Vercel during build).
+    ...(command === "build" && !process.env.VERCEL ? [cloudflare()] : []),
   ],
 }));
