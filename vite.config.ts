@@ -25,7 +25,8 @@ export default defineConfig(({ command }) => ({
     tsConfigPaths(),
     tailwindcss(),
     tanstackStart({
-      server: { entry: "server" },
+      // Use custom SSR error wrapper locally/Cloudflare; default Nitro entry on Vercel.
+      server: process.env.VERCEL ? undefined : { entry: "server" },
     }),
     viteReact(),
     // The Cloudflare plugin is only needed for production builds targeting Workers.
