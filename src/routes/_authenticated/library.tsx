@@ -42,12 +42,20 @@ import {
   Keyboard,
   AlertCircle,
   Loader2,
+  Menu,
+  SlidersHorizontal,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import {
   Dialog,
   DialogContent,
@@ -179,7 +187,8 @@ function LibraryPage() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [smartOpen, setSmartOpen] = useState(false);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
-  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -492,7 +501,7 @@ function LibraryPage() {
 
   const handleSelectLink = (id: string) => {
     setSelected(id);
-    if (window.innerWidth < 1024) setMobileDetailOpen(true);
+    setDetailOpen(true);
   };
 
   // Keyboard shortcuts
@@ -514,7 +523,7 @@ function LibraryPage() {
         setView(view === "list" ? "grid" : "list");
       } else if (e.key === "Escape") {
         setSelected(null);
-        setMobileDetailOpen(false);
+        setDetailOpen(false);
       } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
         const idx = visible.findIndex((l) => l.id === selected);
@@ -541,14 +550,98 @@ function LibraryPage() {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="min-h-screen bg-background text-foreground">
-        {/* Mobile header */}
-        <MobileHeader email={user?.email} onAdd={handleAdd} onSignOut={handleSignOut} />
+        {/* Mobile header — visible below lg */}
+        <MobileHeader email={user?.email} onOpenSidebar={() => setMobileSidebarOpen(true)} />
+
+        {/* Mobile sidebar drawer — only used below lg */}
+        <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+          <SheetContent side="left" className="p-0 w-72 max-w-[85vw] flex flex-col">
+            <div className="p-4 border-b border-border/50">
+              <Wordmark collapsed={false} />
+              {user?.email && (
+                <div className="mt-2 text-[11px] font-mono text-muted-foreground truncate">
+                  {user.email}
+                </div>
+              )}
+            </div>
+            <nav className="px-2 py-3 space-y-0.5">
+              {NAV.map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  onClick={() => setMobileSidebarOpen(false)}
+                  className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm hover:bg-primary/10 hover:text-primary transition-colors font-medium text-muted-foreground"
+                  activeProps={{ className: "bg-primary/10 text-primary" }}
+                >
+                  <item.icon className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                </Link>
+              ))}
+            </nav>
+            <div className="px-4 py-2 grid grid-cols-3 gap-1.5">
+              <MiniPill label="All" value={stats.all} />
+              <MiniPill
+                label="Pin"
+                value={allLinks.filter((l) => !l.deleted_at && l.pinned).length}
+              />
+              <MiniPill label="Fail" value={stats.failed} destructive={stats.failed > 0} />
+            </div>
+            <div className="flex-1 overflow-y-auto scrollbar-thin">
+              <CollectionsBlock
+                collections={collectionsQuery.data ?? []}
+                activeId={filters.collectionId}
+                onSelect={(id) => {
+                  setFilters({ ...filters, collectionId: id });
+                  setMobileSidebarOpen(false);
+                }}
+              />
+            </div>
+            <div className="p-3 border-t border-border/50 flex items-center gap-1.5 flex-wrap">
+              <LanguageToggle />
+              <ThemeToggle />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 hover:bg-primary/10 hover:text-primary"
+                onClick={() => {
+                  setShortcutsOpen(true);
+                  setMobileSidebarOpen(false);
+                }}
+                aria-label="Shortcuts"
+              >
+                <Keyboard className="h-4 w-4" />
+              </Button>
+              <Link to="/settings" onClick={() => setMobileSidebarOpen(false)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 hover:bg-primary/10 hover:text-primary"
+                  aria-label="Settings"
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </Link>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-destructive hover:bg-destructive/10 ml-auto"
+                onClick={() => {
+                  setMobileSidebarOpen(false);
+                  handleSignOut();
+                }}
+                aria-label="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
 
         <div
-          className={`hidden lg:grid ${collapsed ? "lg:grid-cols-[64px_1fr]" : "lg:grid-cols-[280px_1fr]"} min-h-screen transition-[grid-template-columns] duration-300 ease-in-out motion-reduce:transition-none`}
+          className={`lg:grid ${collapsed ? "lg:grid-cols-[64px_1fr]" : "lg:grid-cols-[280px_1fr]"} min-h-screen lg:transition-[grid-template-columns] lg:duration-300 lg:ease-in-out motion-reduce:transition-none`}
         >
-          {/* Left sidebar */}
-          <aside className="border-r border-border/50 bg-sidebar text-sidebar-foreground flex flex-col h-screen sticky top-0">
+          {/* Desktop sidebar — hidden below lg, drawer covers that case */}
+          <aside className="hidden lg:flex border-r border-border/50 bg-sidebar text-sidebar-foreground flex-col h-screen sticky top-0">
             <div
               className={`flex items-center ${collapsed ? "justify-center" : "justify-between"} p-3 border-b border-border/50 min-h-[57px]`}
             >
@@ -687,7 +780,7 @@ function LibraryPage() {
               onOpenFilters={() => setFiltersOpen(true)}
             />
 
-            <div className="sticky top-[120px] z-10 bg-background/80 backdrop-blur border-b border-border/50 px-6">
+            <div className="bg-background/80 backdrop-blur border-b border-border/50 px-4 sm:px-6 overflow-x-auto scrollbar-thin">
               <PageTabs
                 value={tab}
                 onChange={setTab}
@@ -705,7 +798,7 @@ function LibraryPage() {
               />
             </div>
             {selectMode && selectedIds.size > 0 && (
-              <div className="sticky top-[120px] z-20 px-6 py-2 bg-primary/10 border-b border-primary/20 flex items-center gap-2 animate-fade-in">
+              <div className="sticky top-0 z-20 px-4 sm:px-6 py-2 bg-primary/10 border-b border-primary/20 flex items-center gap-2 animate-fade-in flex-wrap">
                 <span className="font-mono text-xs">{selectedIds.size} selected</span>
                 <Button
                   size="sm"
@@ -745,7 +838,7 @@ function LibraryPage() {
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin px-4 sm:px-6 py-4">
               {linksQuery.isLoading ? (
                 <SkeletonList />
               ) : visible.length === 0 ? (
@@ -816,82 +909,48 @@ function LibraryPage() {
           </main>
         </div>
 
-        {/* Mobile body */}
-        <div className="lg:hidden">
-          <div className="px-4 py-3 space-y-3">
-            <AddLinkInput onAdd={handleAdd} loading={addMut.isPending} />
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Search links... (press /)"
-                  className="h-9 pl-9 font-mono text-sm"
-                  value={filters.query}
-                  onChange={(e) => setFilters({ ...filters, query: e.target.value })}
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9"
-                onClick={() => linksQuery.refetch()}
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="grid grid-cols-3 gap-1.5">
-              <StatCard label="All" value={stats.all} />
-              <StatCard label="Ready" value={stats.ready} tone="primary" />
-              <StatCard label="Pending" value={stats.pending} tone="muted" />
-            </div>
-            {linksQuery.isLoading ? (
-              <SkeletonList />
-            ) : visible.length === 0 ? (
-              <EmptyState />
-            ) : (
-              <div className="space-y-2">
-                {visible.map((l, i) => (
-                  <LinkCard
-                    key={l.id}
-                    link={l}
-                    index={i}
-                    view="list"
-                    showNumbers={false}
-                    selected={selected === l.id}
-                    onSelect={() => handleSelectLink(l.id)}
-                    onPin={(p) => pinMut.mutate({ id: l.id, pinned: !p })}
-                    selectMode={false}
-                    isChecked={false}
-                    onCheck={() => {}}
-                  />
-                ))}
-              </div>
+        {/* Detail panel — sheet on all viewports (full-width on mobile, side panel on lg+) */}
+        <Sheet
+          open={detailOpen && !!selectedLink}
+          onOpenChange={(o) => {
+            setDetailOpen(o);
+            if (!o) setSelected(null);
+          }}
+        >
+          <SheetContent side="right" className="w-full sm:max-w-md lg:max-w-lg p-0 overflow-y-auto">
+            {selectedLink && (
+              <DetailPanel
+                link={selectedLink}
+                onClose={() => {
+                  setDetailOpen(false);
+                  setSelected(null);
+                }}
+                onDelete={(id) => {
+                  deleteMut.mutate(id);
+                  setDetailOpen(false);
+                }}
+                onPin={(id, p) => pinMut.mutate({ id, pinned: !p })}
+                onRetry={(id) =>
+                  retryAnalysis(id).then(() => qc.invalidateQueries({ queryKey: ["links"] }))
+                }
+                onUpdate={async (id, patch) => {
+                  await updateLink(id, patch);
+                  qc.invalidateQueries({ queryKey: ["links"] });
+                }}
+                allLinks={allLinks}
+              />
             )}
-          </div>
-          <Sheet open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
-            <SheetContent side="right" className="w-full sm:max-w-md p-0">
-              {selectedLink && (
-                <DetailPanel
-                  link={selectedLink}
-                  onClose={() => setMobileDetailOpen(false)}
-                  onDelete={(id) => {
-                    deleteMut.mutate(id);
-                    setMobileDetailOpen(false);
-                  }}
-                  onPin={(id, p) => pinMut.mutate({ id, pinned: !p })}
-                  onRetry={(id) =>
-                    retryAnalysis(id).then(() => qc.invalidateQueries({ queryKey: ["links"] }))
-                  }
-                  onUpdate={async (id, patch) => {
-                    await updateLink(id, patch);
-                    qc.invalidateQueries({ queryKey: ["links"] });
-                  }}
-                  allLinks={allLinks}
-                />
-              )}
-            </SheetContent>
-          </Sheet>
-        </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* Filters sheet — opens from right on all viewports */}
+        <FiltersSheet
+          open={filtersOpen}
+          onOpenChange={setFiltersOpen}
+          filters={filters}
+          setFilters={setFilters}
+          stats={stats}
+        />
 
         <RecycleBinDialog
           open={recycleOpen}
@@ -927,31 +986,29 @@ function LibraryPage() {
   );
 }
 
-function MobileHeader({
-  email,
-  onAdd,
-  onSignOut,
-}: {
-  email?: string;
-  onAdd: (raw: string) => void;
-  onSignOut: () => void;
-}) {
+function MobileHeader({ email, onOpenSidebar }: { email?: string; onOpenSidebar: () => void }) {
   return (
-    <header className="lg:hidden glass sticky top-0 z-30 border-b border-border/50 px-4 py-3 flex items-center gap-2">
+    <header className="lg:hidden glass sticky top-0 z-30 border-b border-border/50 px-3 flex items-center gap-2 h-14">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 -ml-1"
+        onClick={onOpenSidebar}
+        aria-label="Open menu"
+      >
+        <Menu className="h-4 w-4" />
+      </Button>
       <Logo />
       <div className="flex flex-col leading-tight min-w-0 flex-1">
-        <span className="font-mono text-sm font-semibold">Knowledgemaster</span>
-        {email && <span className="text-[10px] text-muted-foreground truncate">{email}</span>}
+        <span className="font-mono text-sm font-semibold truncate">Knowledgemaster</span>
+        {email && (
+          <span className="text-[10px] text-muted-foreground truncate hidden sm:block">
+            {email}
+          </span>
+        )}
       </div>
+      <LanguageToggle variant="icon" />
       <ThemeToggle />
-      <Link to="/settings">
-        <Button variant="ghost" size="icon" className="h-9 w-9">
-          <Settings className="h-4 w-4" />
-        </Button>
-      </Link>
-      <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={onSignOut}>
-        <LogOut className="h-4 w-4" />
-      </Button>
     </header>
   );
 }
@@ -994,10 +1051,10 @@ const CenterToolbar = (() => {
     ref: React.Ref<HTMLInputElement>,
   ) => {
     return (
-      <div className="glass sticky top-0 z-20 border-b border-border/50 px-6 py-3 space-y-3">
+      <div className="glass sticky top-14 lg:top-0 z-20 border-b border-border/50 px-4 sm:px-6 py-3 space-y-3">
         <AddLinkInput onAdd={onAdd} loading={addPending} />
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 max-w-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="relative flex-1 sm:max-w-xl">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               ref={ref}
@@ -1007,7 +1064,7 @@ const CenterToolbar = (() => {
               onChange={(e) => setFilters({ ...filters, query: e.target.value })}
             />
           </div>
-          <div className="flex items-center gap-1 ml-auto">
+          <div className="flex items-center gap-1 sm:ml-auto flex-wrap">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -1015,6 +1072,7 @@ const CenterToolbar = (() => {
                   size="icon"
                   className="h-9 w-9"
                   onClick={() => setView("list")}
+                  aria-label="List view"
                 >
                   <List className="h-4 w-4" />
                 </Button>
@@ -1028,6 +1086,7 @@ const CenterToolbar = (() => {
                   size="icon"
                   className="h-9 w-9"
                   onClick={() => setView("grid")}
+                  aria-label="Grid view"
                 >
                   <LayoutGrid className="h-4 w-4" />
                 </Button>
@@ -1037,30 +1096,17 @@ const CenterToolbar = (() => {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant={showNumbers ? "secondary" : "ghost"}
-                  size="icon"
-                  className="h-9 w-9"
-                  onClick={() => setShowNumbers(!showNumbers)}
-                >
-                  <Hash className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Toggle numbers</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
                   variant={selectMode ? "secondary" : "ghost"}
                   size="icon"
                   className="h-9 w-9"
                   onClick={() => setSelectMode(!selectMode)}
+                  aria-label="Select mode"
                 >
                   <CheckSquare className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Select mode</TooltipContent>
             </Tooltip>
-            <div className="w-px h-5 bg-border mx-1" />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -1068,38 +1114,26 @@ const CenterToolbar = (() => {
                   size="icon"
                   className="h-9 w-9 hover:bg-primary/10 hover:text-primary"
                   onClick={onSmartSearch}
+                  aria-label="Smart search"
                 >
                   <Sparkles className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Smart search</TooltipContent>
             </Tooltip>
-            <Link to="/discover">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 hover:bg-primary/10 hover:text-primary"
-                  >
-                    <Compass className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Discover</TooltipContent>
-              </Tooltip>
-            </Link>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-9 w-9 hover:bg-primary/10 hover:text-primary"
-                  onClick={() => toast.success("All links healthy")}
+                  onClick={onOpenFilters}
+                  aria-label="Filters"
                 >
-                  <Activity className="h-4 w-4" />
+                  <Filter className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Link health</TooltipContent>
+              <TooltipContent>Filters</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1108,63 +1142,148 @@ const CenterToolbar = (() => {
                   size="icon"
                   className="h-9 w-9 hover:bg-primary/10 hover:text-primary"
                   onClick={onRefresh}
+                  aria-label="Refresh"
                 >
                   <RefreshCw className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Refresh</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-9 w-9 hover:bg-primary/10 hover:text-primary"
-                  onClick={onImport}
-                >
-                  <Upload className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Import</TooltipContent>
-            </Tooltip>
-            <DropdownMenu>
+
+            {/* Secondary toolbar — hidden below md, visible inline on md+ */}
+            <div className="hidden md:flex md:items-center md:gap-1">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={showNumbers ? "secondary" : "ghost"}
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={() => setShowNumbers(!showNumbers)}
+                    aria-label="Toggle numbers"
+                  >
+                    <Hash className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Toggle numbers</TooltipContent>
+              </Tooltip>
+              <Link to="/discover">
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-9 w-9 hover:bg-primary/10 hover:text-primary"
+                      aria-label="Discover"
                     >
-                      <Download className="h-4 w-4" />
+                      <Compass className="h-4 w-4" />
                     </Button>
-                  </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Discover</TooltipContent>
+                </Tooltip>
+              </Link>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 hover:bg-primary/10 hover:text-primary"
+                    onClick={() => toast.success("All links healthy")}
+                    aria-label="Link health"
+                  >
+                    <Activity className="h-4 w-4" />
+                  </Button>
                 </TooltipTrigger>
-                <TooltipContent>Export</TooltipContent>
+                <TooltipContent>Link health</TooltipContent>
               </Tooltip>
-              <DropdownMenuContent align="end" className="font-mono text-xs">
-                <DropdownMenuItem onClick={() => onExport("json")}>Export as JSON</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onExport("csv")}>Export as CSV</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onExport("txt")}>
-                  Export as TXT (URLs)
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 hover:bg-primary/10 hover:text-primary"
+                    onClick={onImport}
+                    aria-label="Import"
+                  >
+                    <Upload className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Import</TooltipContent>
+              </Tooltip>
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 hover:bg-primary/10 hover:text-primary"
+                        aria-label="Export"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Export</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="end" className="font-mono text-xs">
+                  <DropdownMenuItem onClick={() => onExport("json")}>
+                    Export as JSON
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onExport("csv")}>Export as CSV</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onExport("txt")}>
+                    Export as TXT (URLs)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <div className="w-px h-5 bg-border mx-1" />
+              <LanguageToggle />
+            </div>
+
+            {/* Overflow menu — visible only below md */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 hover:bg-primary/10 hover:text-primary"
-                  onClick={onOpenFilters}
+                  className="h-9 w-9 md:hidden hover:bg-primary/10 hover:text-primary"
+                  aria-label="More actions"
                 >
-                  <Filter className="h-4 w-4" />
+                  <MoreHorizontal className="h-4 w-4" />
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>Filters</TooltipContent>
-            </Tooltip>
-            <div className="w-px h-5 bg-border mx-1" />
-            <LanguageToggle />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="font-mono text-xs w-48">
+                <DropdownMenuItem onClick={() => setShowNumbers(!showNumbers)}>
+                  <Hash className="h-3.5 w-3.5 mr-2" />
+                  {showNumbers ? "Hide numbers" : "Show numbers"}
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/discover">
+                    <Compass className="h-3.5 w-3.5 mr-2" />
+                    Discover
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => toast.success("All links healthy")}>
+                  <Activity className="h-3.5 w-3.5 mr-2" />
+                  Link health
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onImport}>
+                  <Upload className="h-3.5 w-3.5 mr-2" />
+                  Import
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onExport("json")}>
+                  <Download className="h-3.5 w-3.5 mr-2" />
+                  Export JSON
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onExport("csv")}>
+                  <Download className="h-3.5 w-3.5 mr-2" />
+                  Export CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onExport("txt")}>
+                  <Download className="h-3.5 w-3.5 mr-2" />
+                  Export TXT
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
@@ -1268,40 +1387,6 @@ function AddLinkInput({ onAdd, loading }: { onAdd: (raw: string) => void; loadin
         </Button>
       </div>
     </form>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  tone,
-  active,
-  onClick,
-}: {
-  label: string;
-  value: number;
-  tone?: "primary" | "muted" | "destructive";
-  active?: boolean;
-  onClick?: () => void;
-}) {
-  const toneClass =
-    tone === "primary"
-      ? "text-primary"
-      : tone === "destructive"
-        ? "text-destructive"
-        : tone === "muted"
-          ? "text-muted-foreground"
-          : "text-foreground";
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-xl border border-border/50 bg-card px-2.5 py-2 text-left transition hover:border-primary/40 hover:bg-primary/5 ${active ? "border-primary/40 bg-primary/5" : ""}`}
-    >
-      <div className={`font-mono text-[10px] uppercase tracking-widest text-muted-foreground`}>
-        {label}
-      </div>
-      <div className={`font-mono text-base font-semibold ${toneClass}`}>{value}</div>
-    </button>
   );
 }
 
@@ -2359,5 +2444,175 @@ function MiniPill({
         {label}
       </span>
     </div>
+  );
+}
+
+const CONTENT_TYPES: { value: "all" | ContentType; label: string }[] = [
+  { value: "all", label: "All types" },
+  { value: "article", label: "Article" },
+  { value: "video", label: "Video" },
+  { value: "repo", label: "Repo" },
+  { value: "docs", label: "Docs" },
+  { value: "tool", label: "Tool" },
+  { value: "thread", label: "Thread" },
+  { value: "other", label: "Other" },
+];
+
+const STATUS_OPTIONS: { value: "all" | LinkStatus; label: string }[] = [
+  { value: "all", label: "Any status" },
+  { value: "ready", label: "Ready" },
+  { value: "pending", label: "Pending" },
+  { value: "failed", label: "Failed" },
+];
+
+const SORT_OPTIONS: { value: FilterState["sort"]; label: string }[] = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "title-asc", label: "Title A → Z" },
+  { value: "title-desc", label: "Title Z → A" },
+  { value: "domain-asc", label: "Domain A → Z" },
+];
+
+function FiltersSheet({
+  open,
+  onOpenChange,
+  filters,
+  setFilters,
+  stats,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  filters: FilterState;
+  setFilters: (f: FilterState) => void;
+  stats: { duplicates: number };
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full sm:max-w-sm p-0 overflow-y-auto flex flex-col">
+        <SheetHeader className="px-5 pt-5 pb-3 border-b border-border/50 flex-row items-center justify-between">
+          <div>
+            <SheetTitle className="font-mono text-base">Filters</SheetTitle>
+            <SheetDescription className="text-xs">Refine the visible link list</SheetDescription>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setFilters(DEFAULT_FILTERS)}
+          >
+            Reset
+          </Button>
+        </SheetHeader>
+        <div className="flex-1 px-5 py-4 space-y-5">
+          <div className="space-y-1.5">
+            <label className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Content type
+            </label>
+            <Select
+              value={filters.contentType}
+              onValueChange={(v) =>
+                setFilters({ ...filters, contentType: v as FilterState["contentType"] })
+              }
+            >
+              <SelectTrigger className="h-9 font-mono text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CONTENT_TYPES.map((o) => (
+                  <SelectItem key={o.value} value={o.value} className="font-mono text-xs">
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Status
+            </label>
+            <Select
+              value={filters.status}
+              onValueChange={(v) => setFilters({ ...filters, status: v as FilterState["status"] })}
+            >
+              <SelectTrigger className="h-9 font-mono text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value} className="font-mono text-xs">
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Sort by
+            </label>
+            <Select
+              value={filters.sort}
+              onValueChange={(v) => setFilters({ ...filters, sort: v as FilterState["sort"] })}
+            >
+              <SelectTrigger className="h-9 font-mono text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SORT_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value} className="font-mono text-xs">
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="border-t border-border/50 pt-4 space-y-3">
+            <label className="flex items-center justify-between cursor-pointer">
+              <span className="flex items-center gap-2 text-sm">
+                <Pin className="h-3.5 w-3.5 text-primary" />
+                Pinned only
+              </span>
+              <Switch
+                checked={filters.pinnedOnly}
+                onCheckedChange={(c) => setFilters({ ...filters, pinnedOnly: c })}
+              />
+            </label>
+            <label className="flex items-center justify-between cursor-pointer">
+              <span className="flex items-center gap-2 text-sm">
+                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                Show trash
+              </span>
+              <Switch
+                checked={filters.showDeleted}
+                onCheckedChange={(c) => setFilters({ ...filters, showDeleted: c })}
+              />
+            </label>
+            <label className="flex items-center justify-between cursor-pointer">
+              <span className="flex items-center gap-2 text-sm">
+                <SlidersHorizontal className="h-3.5 w-3.5 text-primary" />
+                Duplicates only
+                {stats.duplicates > 0 && (
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    ({stats.duplicates})
+                  </span>
+                )}
+              </span>
+              <Switch
+                checked={filters.showDuplicates}
+                onCheckedChange={(c) => setFilters({ ...filters, showDuplicates: c })}
+              />
+            </label>
+          </div>
+        </div>
+        <div className="px-5 py-3 border-t border-border/50">
+          <Button className="w-full" onClick={() => onOpenChange(false)}>
+            Done
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
