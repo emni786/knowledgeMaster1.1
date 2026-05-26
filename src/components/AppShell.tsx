@@ -75,11 +75,15 @@ export function AppShell({
                   <Menu className="h-4 w-4" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="p-0 w-64">
+              <SheetContent side="left" className="p-0 w-64 flex flex-col">
                 <div className="p-4 border-b border-border/50">
                   <Wordmark collapsed={false} />
                 </div>
                 <NavList />
+                <div className="mt-auto p-3 border-t border-border/50 flex items-center gap-2">
+                  <ThemeToggle />
+                  <LanguageToggle />
+                </div>
               </SheetContent>
             </Sheet>
             <h1 className="text-sm font-semibold tracking-tight">{title}</h1>
