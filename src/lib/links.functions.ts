@@ -408,6 +408,143 @@ async function analyzeOne(
   return { analysis: fallback, domain, html_present: !!html };
 }
 
+// Insert pending rows immediately and return their ids. The caller is
+// expected to follow up with `analyzeLinks` (typically fire-and-forget from
+// the browser) so the heavy AI work doesn't block the Add button.
+export const saveLinksPending = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ urls: z.array(z.string().url()).min(1).max(20) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const urls = Array.from(new Set(data.urls.map((u) => u.trim()).filter(Boolean)));
+    const pendingRows = urls.map((url) => {
+      const norm = normalizeUrl(url);
+      const domain = getDomain(norm);
+      return {
+        owner_id: userId,
+        url,
+        normalized_url: norm,
+        domain,
+        title: domain || url,
+        title_bn: domain || url,
+        summary: "Analyzing…",
+        summary_bn: "Analyzing…",
+        key_points: [] as string[],
+        content_type: "other" as const,
+        status: "pending" as const,
+        tags: [] as string[],
+      };
+    });
+    const { data: inserted, error } = await supabase
+      .from("links")
+      .insert(pendingRows)
+      .select("id, url");
+    if (error) throw new Error(error.message);
+    return {
+      ids: (inserted ?? []).map((r) => r.id as string),
+      count: inserted?.length ?? 0,
+    };
+  });
+
+// Run AI analysis for already-inserted rows. Frontend calls this without
+// awaiting so the Add button stays snappy; the realtime subscription on
+// `links` pushes the status transitions back to the UI.
+export const analyzeLinks = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ ids: z.array(z.string().uuid()).min(1).max(20) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, publicClient, userId, dataNeedsScoping } = context;
+    const sel = supabase.from("links").select("id, url").in("id", data.ids);
+    if (dataNeedsScoping) sel.eq("owner_id", userId);
+    const { data: rows, error: selErr } = await sel;
+    if (selErr) throw new Error(selErr.message);
+
+    const results = await Promise.all(
+      (rows ?? []).map(async (row) => {
+        try {
+          const { analysis } = await analyzeOne(row.url as string);
+          const upd = supabase
+            .from("links")
+            .update({
+              title: analysis.title,
+              title_bn: analysis.title_bn,
+              summary: analysis.summary,
+              summary_bn: analysis.summary_bn,
+              key_points: analysis.key_points,
+              tags: analysis.tags,
+              content_type: analysis.content_type,
+              status: "ready",
+              error_message: null,
+              fetched_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", row.id);
+          if (dataNeedsScoping) upd.eq("owner_id", userId);
+          await upd;
+          return {
+            url: row.url as string,
+            title: analysis.title,
+            summary: analysis.summary,
+            ok: true,
+          };
+        } catch (e) {
+          const upd = supabase
+            .from("links")
+            .update({
+              status: "failed",
+              error_message: e instanceof Error ? e.message : "Analysis failed",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", row.id);
+          if (dataNeedsScoping) upd.eq("owner_id", userId);
+          await upd;
+          return { url: row.url as string, title: null, summary: null, ok: false };
+        }
+      }),
+    );
+
+    try {
+      const { data: bots } = await publicClient
+        .from("telegram_bots")
+        .select("bot_token, default_chat_id, active")
+        .eq("active", true);
+      const targets = (
+        (bots ?? []) as Array<{
+          bot_token: string;
+          default_chat_id: number | null;
+          active: boolean;
+        }>
+      ).filter((b) => b.default_chat_id);
+      if (targets.length) {
+        const successes = results.filter((r) => r.ok);
+        await Promise.all(
+          targets.flatMap((b) =>
+            successes.map((r) => {
+              const text = `🔖 Saved to your library\n${r.title ? r.title + "\n" : ""}${r.url}${r.summary ? `\n\n${r.summary}` : ""}`;
+              return fetch(`https://api.telegram.org/bot${b.bot_token}/sendMessage`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  chat_id: b.default_chat_id,
+                  text: text.slice(0, 4000),
+                  disable_web_page_preview: false,
+                }),
+              }).catch(() => undefined);
+            }),
+          ),
+        );
+      }
+    } catch {
+      // Non-fatal: forwarding failure shouldn't break link save
+    }
+
+    return { count: results.length };
+  });
+
 export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
