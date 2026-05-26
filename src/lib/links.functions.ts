@@ -54,20 +54,81 @@ function detectType(u: string, html?: string): Analysis["content_type"] {
   return "article";
 }
 
+// Robust meta extractor that handles either attribute order
+// (`property=... content=...` and `content=... property=...`) plus JSON-LD
+// structured data. Many social platforms (especially Facebook share URLs)
+// emit attributes in non-standard orders or hide the summary inside
+// JSON-LD only, so the simple property-first regex used to miss everything.
 function extractMeta(html: string): { title: string; description: string; siteName: string } {
-  const pick = (re: RegExp) => html.match(re)?.[1]?.trim() ?? "";
-  const title =
-    pick(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ||
-    pick(/<meta[^>]+name=["']twitter:title["'][^>]+content=["']([^"']+)["']/i) ||
-    pick(/<title[^>]*>([^<]+)<\/title>/i);
+  const attrs = new Map<string, string>();
+  const metaRe = /<meta\b([^>]+)>/gi;
+
+  const readAttr = (chunk: string, name: string): string | null => {
+    const re = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i");
+    const m = chunk.match(re);
+    return m ? (m[1] ?? m[2] ?? m[3] ?? null) : null;
+  };
+
+  let match: RegExpExecArray | null;
+  while ((match = metaRe.exec(html)) !== null) {
+    const inner = match[1];
+    const key =
+      readAttr(inner, "property") ?? readAttr(inner, "name") ?? readAttr(inner, "itemprop");
+    const value = readAttr(inner, "content");
+    if (key && value) {
+      const k = key.toLowerCase();
+      if (!attrs.has(k)) attrs.set(k, value);
+    }
+  }
+
+  let ldTitle = "";
+  let ldDescription = "";
+  const ldRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]+?)<\/script>/gi;
+  let ldMatch: RegExpExecArray | null;
+  while ((ldMatch = ldRe.exec(html)) !== null) {
+    try {
+      const node = JSON.parse(ldMatch[1].trim());
+      const items = Array.isArray(node) ? node : [node];
+      for (const item of items) {
+        if (!item || typeof item !== "object") continue;
+        const obj = item as Record<string, unknown>;
+        if (!ldTitle) {
+          const candidate =
+            (typeof obj.headline === "string" && obj.headline) ||
+            (typeof obj.name === "string" && obj.name) ||
+            "";
+          if (candidate) ldTitle = candidate;
+        }
+        if (!ldDescription) {
+          const candidate =
+            (typeof obj.description === "string" && obj.description) ||
+            (typeof obj.articleBody === "string" && obj.articleBody.slice(0, 600)) ||
+            "";
+          if (candidate) ldDescription = candidate;
+        }
+        if (ldTitle && ldDescription) break;
+      }
+    } catch {
+      /* ignore malformed JSON-LD blocks */
+    }
+    if (ldTitle && ldDescription) break;
+  }
+
+  const docTitleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  const docTitle = docTitleMatch ? docTitleMatch[1].trim() : "";
+
+  const title = attrs.get("og:title") || attrs.get("twitter:title") || ldTitle || docTitle;
   const description =
-    pick(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i) ||
-    pick(/<meta[^>]+name=["']twitter:description["'][^>]+content=["']([^"']+)["']/i) ||
-    pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
-  const siteName = pick(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i);
+    attrs.get("og:description") ||
+    attrs.get("twitter:description") ||
+    attrs.get("description") ||
+    ldDescription;
+  const siteName =
+    attrs.get("og:site_name") || attrs.get("application-name") || attrs.get("twitter:site") || "";
+
   return {
-    title: decodeEntities(title),
-    description: decodeEntities(description),
+    title: decodeEntities(title || ""),
+    description: decodeEntities(description || ""),
     siteName: decodeEntities(siteName),
   };
 }
@@ -82,37 +143,123 @@ function decodeEntities(s: string): string {
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
 }
 function stripHtml(html: string): string {
-  return html
+  // Prefer the main article body when present so the AI doesn't waste its
+  // budget on navigation chrome and footer boilerplate.
+  const mainMatch =
+    html.match(/<article\b[\s\S]*?<\/article>/i) ?? html.match(/<main\b[\s\S]*?<\/main>/i);
+  const source = mainMatch && mainMatch[0].length > 600 ? mainMatch[0] : html;
+  return source
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<template[\s\S]*?<\/template>/gi, " ")
+    .replace(/<header\b[\s\S]*?<\/header>/gi, " ")
+    .replace(/<nav\b[\s\S]*?<\/nav>/gi, " ")
+    .replace(/<footer\b[\s\S]*?<\/footer>/gi, " ")
+    .replace(/<aside\b[\s\S]*?<\/aside>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-async function fetchPage(url: string): Promise<string> {
+const CHROME_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+// Many sites (Facebook, X/Twitter, LinkedIn, Instagram) serve a useful Open
+// Graph payload to the well-known social scrapers but a login wall to
+// everyone else. We pick a UA that matches the platform and fall back to
+// Chrome on retry.
+function socialBotUAFor(domain: string | null): string | null {
+  const d = (domain ?? "").toLowerCase();
+  if (/(^|\.)(facebook|fb)\.com$|(^|\.)fb\.me$|(^|\.)messenger\.com$/.test(d)) {
+    return "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)";
+  }
+  if (/(^|\.)(twitter|x)\.com$/.test(d)) return "Twitterbot/1.0";
+  if (/(^|\.)linkedin\.com$/.test(d)) return "LinkedInBot/1.0";
+  if (/(^|\.)instagram\.com$/.test(d)) return "facebookexternalhit/1.1";
+  if (/(^|\.)tiktok\.com$/.test(d)) return "Twitterbot/1.0";
+  return null;
+}
+
+// Facebook's `www.facebook.com/story.php?...` and `share/` URLs render almost
+// nothing useful for non-logged-in clients, but the mobile basic variant
+// returns a static HTML page with the actual post body. Try it as a fallback.
+function fallbackVariantsFor(url: string): string[] {
+  try {
+    const u = new URL(url);
+    const variants: string[] = [];
+    if (/(^|\.)facebook\.com$/.test(u.hostname)) {
+      const mb = new URL(url);
+      mb.hostname = "mbasic.facebook.com";
+      variants.push(mb.toString());
+    }
+    return variants;
+  } catch {
+    return [];
+  }
+}
+
+function looksUseful(html: string): boolean {
+  if (!html) return false;
+  if (
+    /<meta[^>]+(?:property|name)\s*=\s*["'](?:og:title|og:description|twitter:title|twitter:description)["']/i.test(
+      html,
+    )
+  ) {
+    return true;
+  }
+  if (/<script[^>]+type\s*=\s*["']application\/ld\+json["']/i.test(html)) return true;
+  // > 4 KB stripped text is usually a real document, not a login wall.
+  return stripHtml(html).length > 4_000;
+}
+
+async function tryFetch(url: string, ua: string, timeoutMs = 10_000): Promise<string> {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 8000);
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
       redirect: "follow",
       signal: ctrl.signal,
       headers: {
-        "user-agent": "Mozilla/5.0 (compatible; KnowledgemasterBot/1.0)",
-        accept: "text/html,application/xhtml+xml",
+        "user-agent": ua,
+        accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "accept-language": "en-US,en;q=0.9,bn;q=0.7",
+        "cache-control": "no-cache",
       },
     });
     if (!res.ok) return "";
     const ct = res.headers.get("content-type") ?? "";
     if (!ct.includes("text/html") && !ct.includes("xml")) return "";
     const text = await res.text();
-    return text.slice(0, 200_000);
+    return text.slice(0, 400_000);
   } catch {
     return "";
   } finally {
     clearTimeout(t);
   }
+}
+
+async function fetchPage(url: string): Promise<string> {
+  const domain = getDomain(url);
+  const socialUA = socialBotUAFor(domain);
+  const attempts: Array<{ url: string; ua: string }> = [];
+  // Social scrapers first when applicable — they bypass login walls.
+  if (socialUA) attempts.push({ url, ua: socialUA });
+  attempts.push({ url, ua: CHROME_UA });
+  for (const variant of fallbackVariantsFor(url)) {
+    attempts.push({ url: variant, ua: socialUA ?? CHROME_UA });
+    attempts.push({ url: variant, ua: CHROME_UA });
+  }
+
+  let best = "";
+  for (const attempt of attempts) {
+    const html = await tryFetch(attempt.url, attempt.ua);
+    if (looksUseful(html)) return html;
+    if (html.length > best.length) best = html;
+  }
+  return best;
 }
 
 async function aiAnalyze(input: {
@@ -140,10 +287,10 @@ async function aiAnalyze(input: {
   const user = JSON.stringify({
     url: input.url,
     domain: input.domain,
-    og_title: input.meta.title.slice(0, 240),
-    og_description: input.meta.description.slice(0, 600),
+    og_title: input.meta.title.slice(0, 300),
+    og_description: input.meta.description.slice(0, 1200),
     site: input.meta.siteName.slice(0, 80),
-    body_excerpt: input.bodyText.slice(0, 3000),
+    body_excerpt: input.bodyText.slice(0, 5000),
   });
 
   const ctrl = new AbortController();
@@ -188,7 +335,7 @@ async function analyzeOne(
   const domain = getDomain(url);
   const html = await fetchPage(url);
   const meta = html ? extractMeta(html) : { title: "", description: "", siteName: "" };
-  const bodyText = html ? stripHtml(html).slice(0, 4000) : "";
+  const bodyText = html ? stripHtml(html).slice(0, 6000) : "";
 
   const ai = await aiAnalyze({ url, domain, meta, bodyText });
   if (ai) return { analysis: ai, domain, html_present: !!html };
