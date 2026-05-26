@@ -24,6 +24,10 @@ import {
   ChevronRight,
   ExternalLink,
   Star,
+  Bell,
+  BellOff,
+  Eye,
+  EyeOff,
   RotateCcw,
   MoreHorizontal,
   Filter,
@@ -101,6 +105,9 @@ import {
   permanentlyDeleteMany,
   emptyTrash,
   bulkAddTag,
+  setPriority,
+  setRead,
+  setReminder,
 } from "@/lib/api/links";
 import { fetchCollections, createCollection, deleteCollection } from "@/lib/api/collections";
 import type { LinkRow, FilterState, ContentType, LinkStatus } from "@/lib/types";
@@ -318,6 +325,10 @@ function LibraryPage() {
       list = list.filter((l) => l.content_type === filters.contentType);
     if (filters.status !== "all") list = list.filter((l) => l.status === filters.status);
     if (filters.pinnedOnly) list = list.filter((l) => l.pinned);
+    if (filters.minPriority > 0)
+      list = list.filter((l) => (l.priority ?? 0) >= filters.minPriority);
+    if (filters.readState === "read") list = list.filter((l) => !!l.read_at);
+    else if (filters.readState === "unread") list = list.filter((l) => !l.read_at);
     if (debouncedQuery.trim()) {
       const q = debouncedQuery.toLowerCase();
       list = list.filter(
@@ -387,10 +398,14 @@ function LibraryPage() {
   // Mutations
   const addMut = useMutation({
     mutationFn: addLinks,
-    onSuccess: (rows) => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["links"] });
-      const n = Array.isArray(rows) ? rows.length : 1;
-      toast.success(n > 1 ? `Added ${n} links` : "Link saved");
+      const n = res?.count ?? 0;
+      toast.success(
+        n > 1
+          ? `Saved ${n} links — analyzing in background`
+          : "Link saved — analyzing in background",
+      );
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -422,6 +437,29 @@ function LibraryPage() {
   const pinMut = useMutation({
     mutationFn: ({ id, pinned }: { id: string; pinned: boolean }) => togglePin(id, pinned),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["links"] }),
+  });
+  const priorityMut = useMutation({
+    mutationFn: ({ id, priority }: { id: string; priority: 0 | 1 | 2 | 3 }) =>
+      setPriority(id, priority),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["links"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const readMut = useMutation({
+    mutationFn: ({ id, read }: { id: string; read: boolean }) => setRead(id, read),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["links"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const reminderMut = useMutation({
+    mutationFn: ({ id, at }: { id: string; at: string | null }) => setReminder(id, at),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["links"] });
+      if (vars.at) {
+        toast.success(`Reminder set for ${new Date(vars.at).toLocaleString()}`);
+      } else {
+        toast.success("Reminder cleared");
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const handleAdd = (raw: string) => {
@@ -528,7 +566,47 @@ function LibraryPage() {
   const handleSelectLink = (id: string) => {
     setSelected(id);
     setDetailOpen(true);
+    // Opening the detail panel implicitly marks the link as read. The user
+    // can manually flip it back via the detail panel's "Mark unread" action.
+    const row = allLinks.find((l) => l.id === id);
+    if (row && !row.read_at && row.status === "ready" && !row.deleted_at) {
+      readMut.mutate({ id, read: true });
+    }
   };
+
+  // Reminder watcher: every minute (and on mount / when allLinks changes)
+  // surface due, undeleted reminders that haven't been notified yet this
+  // session. The reminder itself stays set until the user clears it, so a
+  // late open of the app still nudges them.
+  const notifiedRemindersRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const tick = () => {
+      const now = Date.now();
+      for (const l of allLinks) {
+        if (
+          l.reminder_at &&
+          !l.deleted_at &&
+          !notifiedRemindersRef.current.has(l.id) &&
+          new Date(l.reminder_at).getTime() <= now
+        ) {
+          notifiedRemindersRef.current.add(l.id);
+          const label = l.title || l.domain || l.url;
+          toast(`Reminder: ${label}`, {
+            description: "You set a reminder to read this.",
+            duration: 8000,
+            action: {
+              label: "Open",
+              onClick: () => handleSelectLink(l.id),
+            },
+          });
+        }
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allLinks]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1085,6 +1163,9 @@ function LibraryPage() {
                   await updateLink(id, patch);
                   qc.invalidateQueries({ queryKey: ["links"] });
                 }}
+                onSetPriority={(id, p) => priorityMut.mutate({ id, priority: p })}
+                onSetRead={(id, r) => readMut.mutate({ id, read: r })}
+                onSetReminder={(id, at) => reminderMut.mutate({ id, at })}
                 allLinks={allLinks}
               />
             )}
@@ -1755,6 +1836,23 @@ function LinkCard({
               )}
               <span className="font-mono text-[10px] text-muted-foreground truncate">{domain}</span>
               {link.pinned && <Pin className="h-3 w-3 text-primary fill-primary" />}
+              {!link.read_at && link.status === "ready" && (
+                <span
+                  aria-label="Unread"
+                  title="Unread"
+                  className="h-1.5 w-1.5 rounded-full bg-primary shrink-0"
+                />
+              )}
+              {(link.priority ?? 0) > 0 && (
+                <span
+                  aria-label={`${link.priority} star${link.priority === 1 ? "" : "s"}`}
+                  className="inline-flex items-center text-amber-500"
+                >
+                  {Array.from({ length: link.priority ?? 0 }).map((_, i) => (
+                    <Star key={i} className="h-3 w-3 fill-current" />
+                  ))}
+                </span>
+              )}
             </div>
             <h3 className="font-medium text-sm truncate mt-0.5">{displayTitle}</h3>
           </div>
@@ -1813,7 +1911,24 @@ function LinkCard({
       <img src={faviconFor(link.url)} alt="" className="h-5 w-5 rounded" loading="lazy" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
+          {!link.read_at && link.status === "ready" && (
+            <span
+              aria-label="Unread"
+              title="Unread"
+              className="h-1.5 w-1.5 rounded-full bg-primary shrink-0"
+            />
+          )}
           <h3 className="font-medium text-sm truncate">{displayTitle}</h3>
+          {(link.priority ?? 0) > 0 && (
+            <span
+              aria-label={`${link.priority} star${link.priority === 1 ? "" : "s"}`}
+              className="inline-flex items-center text-amber-500 shrink-0"
+            >
+              {Array.from({ length: link.priority ?? 0 }).map((_, i) => (
+                <Star key={i} className="h-3 w-3 fill-current" />
+              ))}
+            </span>
+          )}
           {link.pinned && <Pin className="h-3 w-3 text-primary fill-primary shrink-0" />}
           {link.status === "pending" && (
             <Loader2 className="h-3 w-3 text-muted-foreground animate-spin shrink-0" />
@@ -1982,6 +2097,172 @@ const BROAD_DOMAINS = new Set([
   "github.com",
 ]);
 
+// Reminder presets shown in the detail panel. The custom option opens a
+// native datetime-local input so users can pick anything specific.
+const REMINDER_PRESETS: { label: string; minutes: number }[] = [
+  { label: "20 min", minutes: 20 },
+  { label: "1 hour", minutes: 60 },
+  { label: "3 hours", minutes: 60 * 3 },
+  { label: "Tomorrow", minutes: 60 * 24 },
+  { label: "Next week", minutes: 60 * 24 * 7 },
+];
+
+function StarReadReminderRow({
+  link,
+  onSetPriority,
+  onSetRead,
+  onSetReminder,
+}: {
+  link: LinkRow;
+  onSetPriority: (id: string, p: 0 | 1 | 2 | 3) => void;
+  onSetRead: (id: string, read: boolean) => void;
+  onSetReminder: (id: string, at: string | null) => void;
+}) {
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customAt, setCustomAt] = useState<string>("");
+
+  const priority = (link.priority ?? 0) as 0 | 1 | 2 | 3;
+  const isRead = !!link.read_at;
+  const hasReminder = !!link.reminder_at;
+  const reminderLabel = link.reminder_at
+    ? new Date(link.reminder_at).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
+
+  const pickPreset = (minutes: number) => {
+    const at = new Date(Date.now() + minutes * 60_000).toISOString();
+    onSetReminder(link.id, at);
+  };
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border/50 bg-card/50 p-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-1" role="radiogroup" aria-label="Importance">
+          {[1, 2, 3].map((n) => {
+            const active = priority >= n;
+            return (
+              <button
+                key={n}
+                type="button"
+                role="radio"
+                aria-checked={priority === n}
+                title={`${n} star${n === 1 ? "" : "s"}`}
+                onClick={() => onSetPriority(link.id, priority === n ? 0 : (n as 1 | 2 | 3))}
+                className={`p-1 rounded-md transition ${active ? "text-amber-500" : "text-muted-foreground hover:text-amber-500"}`}
+              >
+                <Star className={`h-4 w-4 ${active ? "fill-current" : ""}`} />
+              </button>
+            );
+          })}
+          {priority > 0 && (
+            <button
+              type="button"
+              onClick={() => onSetPriority(link.id, 0)}
+              className="ml-1 font-mono text-[10px] text-muted-foreground hover:text-foreground"
+            >
+              clear
+            </button>
+          )}
+        </div>
+
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 font-mono text-xs"
+          onClick={() => onSetRead(link.id, !isRead)}
+          title={isRead ? "Mark as unread" : "Mark as read"}
+        >
+          {isRead ? (
+            <>
+              <Eye className="h-3.5 w-3.5 mr-1.5" /> Read
+            </>
+          ) : (
+            <>
+              <EyeOff className="h-3.5 w-3.5 mr-1.5" /> Unread
+            </>
+          )}
+        </Button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 font-mono text-xs"
+              title={reminderLabel ? `Reminder: ${reminderLabel}` : "Set a reminder"}
+            >
+              {hasReminder ? (
+                <>
+                  <Bell className="h-3.5 w-3.5 mr-1.5 text-primary" />
+                  {reminderLabel}
+                </>
+              ) : (
+                <>
+                  <Bell className="h-3.5 w-3.5 mr-1.5" /> Remind me
+                </>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="font-mono text-xs">
+            {REMINDER_PRESETS.map((p) => (
+              <DropdownMenuItem key={p.label} onClick={() => pickPreset(p.minutes)}>
+                In {p.label}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                setCustomOpen((v) => !v);
+              }}
+            >
+              Custom…
+            </DropdownMenuItem>
+            {hasReminder && (
+              <DropdownMenuItem
+                onClick={() => onSetReminder(link.id, null)}
+                className="text-destructive"
+              >
+                <BellOff className="h-3.5 w-3.5 mr-1.5" /> Clear reminder
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {customOpen && (
+        <div className="flex items-center gap-2">
+          <Input
+            type="datetime-local"
+            value={customAt}
+            onChange={(e) => setCustomAt(e.target.value)}
+            className="h-7 text-xs font-mono"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 font-mono text-xs"
+            disabled={!customAt}
+            onClick={() => {
+              if (!customAt) return;
+              const at = new Date(customAt);
+              if (Number.isNaN(at.getTime())) return;
+              onSetReminder(link.id, at.toISOString());
+              setCustomOpen(false);
+              setCustomAt("");
+            }}
+          >
+            Save
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DetailPanel({
   link,
   isTrashed,
@@ -1990,6 +2271,9 @@ function DetailPanel({
   onPin,
   onRetry,
   onUpdate,
+  onSetPriority,
+  onSetRead,
+  onSetReminder,
   allLinks,
 }: {
   link: LinkRow;
@@ -1999,6 +2283,9 @@ function DetailPanel({
   onPin: (id: string, p: boolean) => void;
   onRetry: (id: string) => void;
   onUpdate: (id: string, patch: Partial<LinkRow>) => Promise<void>;
+  onSetPriority: (id: string, p: 0 | 1 | 2 | 3) => void;
+  onSetRead: (id: string, read: boolean) => void;
+  onSetReminder: (id: string, at: string | null) => void;
   allLinks: LinkRow[];
 }) {
   const Icon = TYPE_ICON[link.content_type];
@@ -2118,6 +2405,15 @@ function DetailPanel({
           </button>
         </div>
       </div>
+
+      {!isTrashed && link.status === "ready" && (
+        <StarReadReminderRow
+          link={link}
+          onSetPriority={onSetPriority}
+          onSetRead={onSetRead}
+          onSetReminder={onSetReminder}
+        />
+      )}
 
       {displaySummary && (
         <div>
@@ -2771,6 +3067,59 @@ function FiltersSheet({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Minimum stars
+            </label>
+            <div className="inline-flex rounded-md border border-border/60 bg-background p-0.5 text-xs">
+              {([0, 1, 2, 3] as const).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setFilters({ ...filters, minPriority: n })}
+                  aria-pressed={filters.minPriority === n}
+                  className={`px-2.5 py-1 rounded transition font-mono inline-flex items-center gap-0.5 ${
+                    filters.minPriority === n
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {n === 0 ? (
+                    "Any"
+                  ) : (
+                    <>
+                      {n}
+                      <Star className="h-3 w-3 fill-current" />
+                    </>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Read state
+            </label>
+            <div className="inline-flex rounded-md border border-border/60 bg-background p-0.5 text-xs">
+              {(["all", "unread", "read"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setFilters({ ...filters, readState: s })}
+                  aria-pressed={filters.readState === s}
+                  className={`px-2.5 py-1 rounded transition font-mono capitalize ${
+                    filters.readState === s
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="border-t border-border/50 pt-4 space-y-3">

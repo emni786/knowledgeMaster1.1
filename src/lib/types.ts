@@ -17,6 +17,16 @@ export interface LinkRow {
   status: LinkStatus;
   tags: string[];
   pinned: boolean;
+  // Importance (0 = none, 1–3 = ★ ★★ ★★★). Persisted, surfaced on cards
+  // and the detail panel; users can also filter by minimum stars.
+  priority: number;
+  // Read tracking. `null` = unread; otherwise the timestamp the user marked
+  // it as read. A subtle dot on the card highlights unread items.
+  read_at: string | null;
+  // Optional "remind me to read this" timestamp. When non-null and in the
+  // past, the in-app reminder watcher surfaces a toast/notification on
+  // next render so the link doesn't get forgotten in the pile.
+  reminder_at: string | null;
   source: LinkSource;
   error_message: string | null;
   fetched_at: string | null;
@@ -45,6 +55,10 @@ export interface FilterState {
   showDeleted: boolean;
   showDuplicates: boolean;
   collectionId: string | null;
+  // 0 = no filter, 1–3 = only links with at least N stars.
+  minPriority: 0 | 1 | 2 | 3;
+  // "all" = no read filter; "read" / "unread" narrows the visible set.
+  readState: "all" | "read" | "unread";
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -56,4 +70,6 @@ export const DEFAULT_FILTERS: FilterState = {
   showDeleted: false,
   showDuplicates: false,
   collectionId: null,
+  minPriority: 0,
+  readState: "all",
 };
