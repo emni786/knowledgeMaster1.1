@@ -22,7 +22,6 @@ import {
   Library as LibraryIcon,
   ChevronLeft,
   ChevronRight,
-  X,
   ExternalLink,
   Star,
   RotateCcw,
@@ -97,7 +96,9 @@ import {
   togglePin,
   retryAnalysis,
   restoreLink,
+  restoreMany,
   permanentlyDelete,
+  permanentlyDeleteMany,
   emptyTrash,
   bulkAddTag,
 } from "@/lib/api/links";
@@ -370,6 +371,14 @@ function LibraryPage() {
     [visible],
   );
 
+  // Render-order list of visible ids. Used for shift+click range select and
+  // for the "Select all" checkbox in the bulk action bar so that the range
+  // matches what the user actually sees on screen.
+  const visibleOrderedIds = useMemo(
+    () => [...groups.ready, ...groups.pending, ...groups.failed].map((l) => l.id),
+    [groups],
+  );
+
   const selectedLink = useMemo(
     () => allLinks.find((l) => l.id === selected) ?? null,
     [allLinks, selected],
@@ -392,6 +401,23 @@ function LibraryPage() {
       setSelected(null);
       toast.success("Moved to trash");
     },
+  });
+  const permanentDeleteMut = useMutation({
+    mutationFn: permanentlyDelete,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["links"] });
+      setSelected(null);
+      toast.success("Deleted permanently");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const restoreMut = useMutation({
+    mutationFn: restoreLink,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["links"] });
+      toast.success("Restored");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
   const pinMut = useMutation({
     mutationFn: ({ id, pinned }: { id: string; pinned: boolean }) => togglePin(id, pinned),
@@ -538,14 +564,36 @@ function LibraryPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [visible, selected, selectedLink, view, setView]);
 
-  const toggleSelected = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  const lastSelectedIdRef = useRef<string | null>(null);
+  const toggleSelected = useCallback(
+    (id: string, opts?: { shift?: boolean; visibleIds?: string[] }) => {
+      const { shift, visibleIds } = opts ?? {};
+      const anchor = lastSelectedIdRef.current;
+      if (shift && anchor && visibleIds && anchor !== id) {
+        const a = visibleIds.indexOf(anchor);
+        const b = visibleIds.indexOf(id);
+        if (a !== -1 && b !== -1) {
+          const [lo, hi] = a < b ? [a, b] : [b, a];
+          const range = visibleIds.slice(lo, hi + 1);
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            for (const rid of range) next.add(rid);
+            return next;
+          });
+          lastSelectedIdRef.current = id;
+          return;
+        }
+      }
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      lastSelectedIdRef.current = id;
+    },
+    [],
+  );
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -597,20 +645,7 @@ function LibraryPage() {
               />
             </div>
             <div className="p-3 border-t border-border/50 flex items-center gap-1.5 flex-wrap">
-              <LanguageToggle />
               <ThemeToggle />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 hover:bg-primary/10 hover:text-primary"
-                onClick={() => {
-                  setShortcutsOpen(true);
-                  setMobileSidebarOpen(false);
-                }}
-                aria-label="Shortcuts"
-              >
-                <Keyboard className="h-4 w-4" />
-              </Button>
               <Link to="/settings" onClick={() => setMobileSidebarOpen(false)}>
                 <Button
                   variant="ghost"
@@ -780,7 +815,7 @@ function LibraryPage() {
               onOpenFilters={() => setFiltersOpen(true)}
             />
 
-            <div className="bg-background/80 backdrop-blur border-b border-border/50 px-4 sm:px-6 overflow-x-auto scrollbar-thin">
+            <div className="bg-background border-b border-border/50 px-4 sm:px-6 overflow-x-auto scrollbar-thin">
               <PageTabs
                 value={tab}
                 onChange={setTab}
@@ -797,46 +832,150 @@ function LibraryPage() {
                 ]}
               />
             </div>
-            {selectMode && selectedIds.size > 0 && (
-              <div className="sticky top-0 z-20 px-4 sm:px-6 py-2 bg-primary/10 border-b border-primary/20 flex items-center gap-2 animate-fade-in flex-wrap">
-                <span className="font-mono text-xs">{selectedIds.size} selected</span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 font-mono text-xs"
-                  onClick={() => setBulkTagOpen(true)}
-                >
-                  <Tag className="h-3 w-3 mr-1" />
-                  Add tag
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 font-mono text-xs text-destructive"
-                  onClick={async () => {
-                    await softDeleteMany(Array.from(selectedIds));
-                    qc.invalidateQueries({ queryKey: ["links"] });
-                    setSelectedIds(new Set());
-                    setSelectMode(false);
-                    toast.success("Deleted");
-                  }}
-                >
-                  <Trash2 className="h-3 w-3 mr-1" />
-                  Delete
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 font-mono text-xs ml-auto"
-                  onClick={() => {
-                    setSelectedIds(new Set());
-                    setSelectMode(false);
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            )}
+            {selectMode &&
+              (() => {
+                const visibleCount = visibleOrderedIds.length;
+                const selectedVisibleCount = visibleOrderedIds.reduce(
+                  (n, id) => (selectedIds.has(id) ? n + 1 : n),
+                  0,
+                );
+                const allSelected = visibleCount > 0 && selectedVisibleCount === visibleCount;
+                const partiallySelected =
+                  selectedVisibleCount > 0 && selectedVisibleCount < visibleCount;
+                const toggleSelectAll = () => {
+                  if (allSelected) setSelectedIds(new Set());
+                  else setSelectedIds(new Set(visibleOrderedIds));
+                };
+                const inTrash = tab === "trash";
+                const hasSelection = selectedIds.size > 0;
+                return (
+                  <div className="sticky top-0 z-20 px-4 sm:px-6 py-2 bg-primary/10 border-b border-primary/20 flex items-center gap-2 animate-fade-in flex-wrap">
+                    <button
+                      type="button"
+                      onClick={toggleSelectAll}
+                      disabled={visibleCount === 0}
+                      className="inline-flex items-center gap-2 font-mono text-xs h-7 px-2 rounded-md hover:bg-primary/15 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Checkbox
+                        checked={allSelected ? true : partiallySelected ? "indeterminate" : false}
+                        className="pointer-events-none"
+                      />
+                      <span>
+                        {allSelected
+                          ? `All ${visibleCount} selected`
+                          : selectedIds.size > 0
+                            ? `${selectedIds.size} selected`
+                            : `Select all (${visibleCount})`}
+                      </span>
+                    </button>
+
+                    {inTrash ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 font-mono text-xs"
+                          disabled={!hasSelection}
+                          onClick={async () => {
+                            const ids = Array.from(selectedIds);
+                            try {
+                              await restoreMany(ids);
+                              qc.invalidateQueries({ queryKey: ["links"] });
+                              toast.success(
+                                `Restored ${ids.length} link${ids.length === 1 ? "" : "s"}`,
+                              );
+                              setSelectedIds(new Set());
+                              setSelectMode(false);
+                            } catch (e) {
+                              toast.error((e as Error).message);
+                            }
+                          }}
+                        >
+                          <RotateCcw className="h-3 w-3 mr-1" />
+                          Restore
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 font-mono text-xs text-destructive"
+                          disabled={!hasSelection}
+                          onClick={async () => {
+                            const ids = Array.from(selectedIds);
+                            if (
+                              !window.confirm(
+                                `Permanently delete ${ids.length} link${ids.length === 1 ? "" : "s"}? This cannot be undone.`,
+                              )
+                            ) {
+                              return;
+                            }
+                            try {
+                              await permanentlyDeleteMany(ids);
+                              qc.invalidateQueries({ queryKey: ["links"] });
+                              toast.success(
+                                `Deleted ${ids.length} link${ids.length === 1 ? "" : "s"} forever`,
+                              );
+                              setSelectedIds(new Set());
+                              setSelectMode(false);
+                            } catch (e) {
+                              toast.error((e as Error).message);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Delete forever
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 font-mono text-xs"
+                          disabled={!hasSelection}
+                          onClick={() => setBulkTagOpen(true)}
+                        >
+                          <Tag className="h-3 w-3 mr-1" />
+                          Add tag
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 font-mono text-xs text-destructive"
+                          disabled={!hasSelection}
+                          onClick={async () => {
+                            const ids = Array.from(selectedIds);
+                            try {
+                              await softDeleteMany(ids);
+                              qc.invalidateQueries({ queryKey: ["links"] });
+                              toast.success(
+                                `Moved ${ids.length} link${ids.length === 1 ? "" : "s"} to trash`,
+                              );
+                              setSelectedIds(new Set());
+                              setSelectMode(false);
+                            } catch (e) {
+                              toast.error((e as Error).message);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Delete
+                        </Button>
+                      </>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 font-mono text-xs ml-auto"
+                      onClick={() => {
+                        setSelectedIds(new Set());
+                        setSelectMode(false);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                );
+              })()}
 
             <div className="flex-1 overflow-y-auto scrollbar-thin px-4 sm:px-6 py-4">
               {linksQuery.isLoading ? (
@@ -855,6 +994,7 @@ function LibraryPage() {
                         selectMode={selectMode}
                         selectedIds={selectedIds}
                         toggleSelected={toggleSelected}
+                        visibleOrderedIds={visibleOrderedIds}
                         selected={selected}
                         onSelect={handleSelectLink}
                         onPin={(id, p) => pinMut.mutate({ id, pinned: !p })}
@@ -876,6 +1016,7 @@ function LibraryPage() {
                         selectMode={selectMode}
                         selectedIds={selectedIds}
                         toggleSelected={toggleSelected}
+                        visibleOrderedIds={visibleOrderedIds}
                         selected={selected}
                         onSelect={handleSelectLink}
                         onPin={(id, p) => pinMut.mutate({ id, pinned: !p })}
@@ -897,6 +1038,7 @@ function LibraryPage() {
                         selectMode={selectMode}
                         selectedIds={selectedIds}
                         toggleSelected={toggleSelected}
+                        visibleOrderedIds={visibleOrderedIds}
                         selected={selected}
                         onSelect={handleSelectLink}
                         onPin={(id, p) => pinMut.mutate({ id, pinned: !p })}
@@ -921,13 +1063,19 @@ function LibraryPage() {
             {selectedLink && (
               <DetailPanel
                 link={selectedLink}
-                onClose={() => {
+                isTrashed={!!selectedLink.deleted_at}
+                onDelete={(id) => {
+                  if (selectedLink.deleted_at) {
+                    permanentDeleteMut.mutate(id);
+                  } else {
+                    deleteMut.mutate(id);
+                  }
+                  setDetailOpen(false);
+                }}
+                onRestore={(id) => {
+                  restoreMut.mutate(id);
                   setDetailOpen(false);
                   setSelected(null);
-                }}
-                onDelete={(id) => {
-                  deleteMut.mutate(id);
-                  setDetailOpen(false);
                 }}
                 onPin={(id, p) => pinMut.mutate({ id, pinned: !p })}
                 onRetry={(id) =>
@@ -1051,7 +1199,7 @@ const CenterToolbar = (() => {
     ref: React.Ref<HTMLInputElement>,
   ) => {
     return (
-      <div className="glass sticky top-14 lg:top-0 z-20 border-b border-border/50 px-4 sm:px-6 py-3 space-y-3">
+      <div className="glass lg:sticky lg:top-0 z-20 border-b border-border/50 px-4 sm:px-6 py-3 space-y-3">
         <AddLinkInput onAdd={onAdd} loading={addPending} />
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <div className="relative flex-1 sm:max-w-xl">
@@ -1485,6 +1633,7 @@ function LinkGrid({
   selectMode,
   selectedIds,
   toggleSelected,
+  visibleOrderedIds,
   selected,
   onSelect,
   onPin,
@@ -1495,7 +1644,8 @@ function LinkGrid({
   numberOffset: number;
   selectMode: boolean;
   selectedIds: Set<string>;
-  toggleSelected: (id: string) => void;
+  toggleSelected: (id: string, opts?: { shift?: boolean; visibleIds?: string[] }) => void;
+  visibleOrderedIds: string[];
   selected: string | null;
   onSelect: (id: string) => void;
   onPin: (id: string, p: boolean) => void;
@@ -1518,7 +1668,7 @@ function LinkGrid({
           onPin={(p) => onPin(l.id, p)}
           selectMode={selectMode}
           isChecked={selectedIds.has(l.id)}
-          onCheck={() => toggleSelected(l.id)}
+          onCheck={(shift) => toggleSelected(l.id, { shift, visibleIds: visibleOrderedIds })}
         />
       ))}
     </div>
@@ -1546,7 +1696,7 @@ function LinkCard({
   onPin: (p: boolean) => void;
   selectMode: boolean;
   isChecked: boolean;
-  onCheck: () => void;
+  onCheck: (shift: boolean) => void;
 }) {
   const { lang } = useLanguage();
   const domain = link.domain || getDomain(link.url);
@@ -1585,7 +1735,7 @@ function LinkCard({
     return withHover(
       <button
         ref={ref as React.RefObject<HTMLButtonElement>}
-        onClick={selectMode ? onCheck : onSelect}
+        onClick={(e) => (selectMode ? onCheck(e.shiftKey) : onSelect())}
         aria-pressed={selected}
         data-selected={selected ? "true" : undefined}
         className={`group relative overflow-hidden text-left rounded-2xl border p-3 transition hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${selected ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-md -translate-y-0.5" : "border-border/50 bg-card"}`}
@@ -1642,7 +1792,7 @@ function LinkCard({
   return withHover(
     <div
       ref={ref as React.RefObject<HTMLDivElement>}
-      onClick={selectMode ? onCheck : onSelect}
+      onClick={(e) => (selectMode ? onCheck(e.shiftKey) : onSelect())}
       role="button"
       tabIndex={0}
       aria-selected={selected}
@@ -1650,7 +1800,8 @@ function LinkCard({
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          (selectMode ? onCheck : onSelect)();
+          if (selectMode) onCheck(e.shiftKey);
+          else onSelect();
         }
       }}
       className={`group relative overflow-hidden flex items-center gap-3 rounded-2xl border px-3 py-2 cursor-pointer transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${selected ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-sm pl-4 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:rounded-r-full before:bg-primary" : "border-border/50 bg-card hover:bg-accent/40"}`}
@@ -1808,18 +1959,43 @@ function AnalysisProgressBar() {
   );
 }
 
+// Big social/platform domains where "same domain" alone is a weak similarity
+// signal (everything on facebook.com / x.com is "facebook.com"). For these
+// hosts we require tag overlap; for niche domains a domain match still helps.
+const BROAD_DOMAINS = new Set([
+  "facebook.com",
+  "m.facebook.com",
+  "fb.com",
+  "fb.watch",
+  "twitter.com",
+  "x.com",
+  "youtube.com",
+  "youtu.be",
+  "m.youtube.com",
+  "instagram.com",
+  "tiktok.com",
+  "linkedin.com",
+  "reddit.com",
+  "threads.net",
+  "medium.com",
+  "substack.com",
+  "github.com",
+]);
+
 function DetailPanel({
   link,
-  onClose,
+  isTrashed,
   onDelete,
+  onRestore,
   onPin,
   onRetry,
   onUpdate,
   allLinks,
 }: {
   link: LinkRow;
-  onClose: () => void;
+  isTrashed?: boolean;
   onDelete: (id: string) => void;
+  onRestore?: (id: string) => void;
   onPin: (id: string, p: boolean) => void;
   onRetry: (id: string) => void;
   onUpdate: (id: string, patch: Partial<LinkRow>) => Promise<void>;
@@ -1837,18 +2013,27 @@ function DetailPanel({
   const displaySummary = pickSummary(link, panelLang);
   const hasKeyPoints = Array.isArray(link.key_points) && link.key_points.length > 0;
   const [tagInput, setTagInput] = useState("");
-  const similar = useMemo(
-    () =>
-      allLinks
-        .filter(
-          (l) =>
-            l.id !== link.id &&
-            !l.deleted_at &&
-            (l.domain === link.domain || l.tags.some((t) => link.tags.includes(t))),
-        )
-        .slice(0, 5),
-    [allLinks, link],
-  );
+  // Similarity: rank by shared-tag count first. A same-domain match adds a
+  // small bonus only for narrow/niche domains; on broad platforms (facebook,
+  // x.com, youtube…) every saved link would otherwise look "similar".
+  const similar = useMemo(() => {
+    const myTags = new Set((link.tags ?? []).map((t) => t.toLowerCase()));
+    const myDomain = link.domain ?? null;
+    const domainBonusEligible = myDomain != null && !BROAD_DOMAINS.has(myDomain);
+    const scored: { l: LinkRow; score: number }[] = [];
+    for (const l of allLinks) {
+      if (l.id === link.id || l.deleted_at) continue;
+      let overlap = 0;
+      for (const t of l.tags ?? []) {
+        if (myTags.has(t.toLowerCase())) overlap++;
+      }
+      const domainMatch = domainBonusEligible && l.domain === myDomain ? 0.5 : 0;
+      const score = overlap + domainMatch;
+      if (score >= 1) scored.push({ l, score });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, 5).map((x) => x.l);
+  }, [allLinks, link]);
 
   const addTag = async () => {
     const t = tagInput.trim();
@@ -1860,15 +2045,15 @@ function DetailPanel({
     await onUpdate(link.id, { tags: link.tags.filter((x) => x !== t) } as Partial<LinkRow>);
   };
 
+  // The wrapping SheetContent already renders a close (X) button at top-right;
+  // we intentionally don't render another one here to avoid the duplicate
+  // overlay users were seeing.
   return (
-    <div className="animate-slide-in-right p-5 space-y-5">
+    <div className="animate-slide-in-right p-5 pt-12 space-y-5">
       <div className="flex items-center justify-between">
         <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          Link Detail
+          {isTrashed ? "Link Detail · In Trash" : "Link Detail"}
         </span>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
       </div>
 
       <div>
@@ -2002,7 +2187,7 @@ function DetailPanel({
           />
           {link.pinned ? "Unpin" : "Pin"}
         </Button>
-        {link.status !== "ready" && (
+        {link.status !== "ready" && !isTrashed && (
           <Button
             size="sm"
             variant="outline"
@@ -2013,14 +2198,33 @@ function DetailPanel({
             Retry
           </Button>
         )}
+        {isTrashed && onRestore && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 font-mono text-xs"
+            onClick={() => onRestore(link.id)}
+          >
+            <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+            Restore
+          </Button>
+        )}
         <Button
           size="sm"
           variant="outline"
           className="h-8 font-mono text-xs text-destructive hover:bg-destructive/10"
-          onClick={() => onDelete(link.id)}
+          onClick={() => {
+            if (
+              isTrashed &&
+              !window.confirm("Delete this link permanently? This cannot be undone.")
+            ) {
+              return;
+            }
+            onDelete(link.id);
+          }}
         >
           <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-          Delete
+          {isTrashed ? "Delete forever" : "Delete"}
         </Button>
       </div>
 

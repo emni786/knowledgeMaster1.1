@@ -11,7 +11,9 @@ import {
   softDeleteLinkServer,
   softDeleteManyLinksServer,
   restoreLinkServer,
+  restoreManyLinksServer,
   permanentlyDeleteLinkServer,
+  permanentlyDeleteManyLinksServer,
   emptyTrashServer,
   bulkAddTagServer,
 } from "@/lib/links.functions";
@@ -50,6 +52,16 @@ export async function restoreLink(id: string): Promise<void> {
 
 export async function permanentlyDelete(id: string): Promise<void> {
   await permanentlyDeleteLinkServer({ data: { id } });
+}
+
+export async function permanentlyDeleteMany(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  await permanentlyDeleteManyLinksServer({ data: { ids } });
+}
+
+export async function restoreMany(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  await restoreManyLinksServer({ data: { ids } });
 }
 
 export async function emptyTrash(): Promise<void> {
