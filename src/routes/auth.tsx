@@ -23,6 +23,18 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
+// Canonical public URL of the deployed app. Set `VITE_PUBLIC_APP_URL` in
+// Vercel (and any other host) so that auth flows always send the user back
+// to the canonical domain instead of whichever preview/staging origin they
+// happened to click "Continue with Google" from. Falls back to the current
+// browser origin for local dev (`bun run dev` on localhost).
+function canonicalOrigin(): string {
+  const fromEnv = import.meta.env.VITE_PUBLIC_APP_URL as string | undefined;
+  if (fromEnv && fromEnv.trim()) return fromEnv.replace(/\/$/, "");
+  if (typeof window !== "undefined") return window.location.origin;
+  return "https://knowledge-master1-1.vercel.app";
+}
+
 function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +47,7 @@ function AuthPage() {
     setLoading(false);
     if (error) return toast.error(error.message);
     toast.success("Welcome back");
-    window.location.href = "/library";
+    window.location.href = `${canonicalOrigin()}/library`;
   };
 
   const signUp = async (e: React.FormEvent) => {
@@ -44,18 +56,18 @@ function AuthPage() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: `${window.location.origin}/library` },
+      options: { emailRedirectTo: `${canonicalOrigin()}/library` },
     });
     setLoading(false);
     if (error) return toast.error(error.message);
     toast.success("Account created — check your email if confirmation is required");
-    window.location.href = "/library";
+    window.location.href = `${canonicalOrigin()}/library`;
   };
 
   const reset = async () => {
     if (!email) return toast.error("Enter your email first");
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${canonicalOrigin()}/reset-password`,
     });
     if (error) return toast.error(error.message);
     toast.success("Reset link sent");
@@ -71,7 +83,7 @@ function AuthPage() {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/library`,
+        redirectTo: `${canonicalOrigin()}/library`,
         skipBrowserRedirect: true,
       },
     });
