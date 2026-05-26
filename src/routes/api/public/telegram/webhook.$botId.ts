@@ -39,27 +39,54 @@ function detectType(url: string): string {
   return "article";
 }
 
-async function summarize(url: string): Promise<{ title: string | null; summary: string | null }> {
-  if (!(await getAIConfig())) return { title: null, summary: null };
+interface BilingualSummary {
+  title: string | null;
+  title_bn: string | null;
+  summary: string | null;
+  summary_bn: string | null;
+  key_points: string[];
+}
+
+async function summarize(url: string): Promise<BilingualSummary> {
+  if (!(await getAIConfig()))
+    return { title: null, title_bn: null, summary: null, summary_bn: null, key_points: [] };
   try {
     const raw = await chatCompletion({
       messages: [
         {
           role: "system",
           content:
-            'You analyze URLs for a knowledge library. Reply with strict JSON only: {"title":"...","summary":"..."}. Title <= 90 chars. Summary 1-2 sentences <= 240 chars.',
+            "You analyze URLs for a personal knowledge library. Reply with STRICT JSON only, matching: " +
+            `{"title":"<English title>","title_bn":"<Bangla title>","summary":"<English 3-5 sentences>","summary_bn":"<Bangla 3-5 sentences>","key_points":["<bullet>","3-5 items"]}. ` +
+            "title_bn / summary_bn MUST be in Bangla script (বাংলা) but keep technical / proper-noun terms (React, API, GitHub, LLM, etc.) in English. " +
+            "summary covers WHAT it is, KEY substance, and WHO/WHY it's useful. No marketing fluff. " +
+            "key_points are concrete English bullets <= 140 chars each.",
         },
         { role: "user", content: `URL: ${url}` },
       ],
       jsonResponse: true,
     });
-    const parsed = JSON.parse(raw) as { title?: string; summary?: string };
+    const parsed = JSON.parse(raw) as {
+      title?: string;
+      title_bn?: string;
+      summary?: string;
+      summary_bn?: string;
+      key_points?: string[];
+    };
     return {
       title: parsed.title?.slice(0, 200) ?? null,
-      summary: parsed.summary?.slice(0, 1000) ?? null,
+      title_bn: parsed.title_bn?.slice(0, 200) ?? parsed.title?.slice(0, 200) ?? null,
+      summary: parsed.summary?.slice(0, 1200) ?? null,
+      summary_bn: parsed.summary_bn?.slice(0, 1400) ?? parsed.summary?.slice(0, 1200) ?? null,
+      key_points: Array.isArray(parsed.key_points)
+        ? parsed.key_points
+            .slice(0, 5)
+            .map((k) => String(k).trim())
+            .filter(Boolean)
+        : [],
     };
   } catch {
-    return { title: null, summary: null };
+    return { title: null, title_bn: null, summary: null, summary_bn: null, key_points: [] };
   }
 }
 
@@ -151,6 +178,8 @@ export const Route = createFileRoute("/api/public/telegram/webhook/$botId")({
           const norm = normalize(url);
           const dom = domainOf(norm);
           const ai = await summarize(url);
+          const fallbackTitle = ai.title ?? dom ?? url;
+          const fallbackSummary = ai.summary ?? `Saved from Telegram (${dom ?? "link"}).`;
           const { error } = await dataDb.from("links").insert({
             owner_id: bot.owner_id,
             url,
@@ -159,8 +188,11 @@ export const Route = createFileRoute("/api/public/telegram/webhook/$botId")({
             content_type: detectType(url),
             status: "ready",
             source: "telegram",
-            title: ai.title ?? dom ?? url,
-            summary: ai.summary ?? `Saved from Telegram (${dom ?? "link"}).`,
+            title: fallbackTitle,
+            title_bn: ai.title_bn ?? fallbackTitle,
+            summary: fallbackSummary,
+            summary_bn: ai.summary_bn ?? fallbackSummary,
+            key_points: ai.key_points,
             tags: [],
             fetched_at: new Date().toISOString(),
           });

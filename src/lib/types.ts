@@ -9,7 +9,10 @@ export interface LinkRow {
   normalized_url: string | null;
   domain: string | null;
   title: string | null;
+  title_bn: string | null;
   summary: string | null;
+  summary_bn: string | null;
+  key_points: string[];
   content_type: ContentType;
   status: LinkStatus;
   tags: string[];

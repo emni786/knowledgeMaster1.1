@@ -38,27 +38,61 @@ function detectType(u: string): string {
   return "article";
 }
 
-async function summarize(
-  url: string,
-  title?: string,
-): Promise<{ title: string | null; summary: string | null; tags: string[] }> {
-  if (!(await getAIConfig())) return { title: title ?? null, summary: null, tags: [] };
+interface BilingualSummary {
+  title: string | null;
+  title_bn: string | null;
+  summary: string | null;
+  summary_bn: string | null;
+  key_points: string[];
+  tags: string[];
+}
+
+async function summarize(url: string, title?: string): Promise<BilingualSummary> {
+  if (!(await getAIConfig())) {
+    return {
+      title: title ?? null,
+      title_bn: title ?? null,
+      summary: null,
+      summary_bn: null,
+      key_points: [],
+      tags: [],
+    };
+  }
   try {
     const raw = await chatCompletion({
       messages: [
         {
           role: "system",
           content:
-            'Reply with strict JSON: {"title":"...","summary":"...","tags":["kebab-case"]}. Title <=120 chars, summary <=280, 1-5 tags lowercase kebab.',
+            "You analyze URLs for a personal knowledge library. Reply with STRICT JSON only, matching: " +
+            `{"title":"<English title>","title_bn":"<Bangla title>","summary":"<English 3-5 sentences>","summary_bn":"<Bangla 3-5 sentences>","key_points":["<bullet>","3-5 items"],"tags":["kebab-case","3-6"]}. ` +
+            "title_bn / summary_bn MUST be in Bangla script (বাংলা) but keep technical / proper-noun terms (React, API, GitHub, LLM, etc.) in English. " +
+            "summary covers WHAT it is, the KEY substance, and WHO/WHY it's useful. No marketing fluff. " +
+            "tags are lowercase kebab-case slugs. key_points are concrete English bullets <= 140 chars each.",
         },
         { role: "user", content: `URL: ${url}${title ? `\nPage title: ${title}` : ""}` },
       ],
       jsonResponse: true,
     });
-    const p = JSON.parse(raw) as { title?: string; summary?: string; tags?: string[] };
+    const p = JSON.parse(raw) as {
+      title?: string;
+      title_bn?: string;
+      summary?: string;
+      summary_bn?: string;
+      key_points?: string[];
+      tags?: string[];
+    };
     return {
       title: p.title?.slice(0, 200) ?? title ?? null,
-      summary: p.summary?.slice(0, 1000) ?? null,
+      title_bn: p.title_bn?.slice(0, 200) ?? p.title?.slice(0, 200) ?? title ?? null,
+      summary: p.summary?.slice(0, 1200) ?? null,
+      summary_bn: p.summary_bn?.slice(0, 1400) ?? p.summary?.slice(0, 1200) ?? null,
+      key_points: Array.isArray(p.key_points)
+        ? p.key_points
+            .slice(0, 5)
+            .map((k) => String(k).trim())
+            .filter(Boolean)
+        : [],
       tags: Array.isArray(p.tags)
         ? p.tags
             .slice(0, 6)
@@ -67,7 +101,14 @@ async function summarize(
         : [],
     };
   } catch {
-    return { title: title ?? null, summary: null, tags: [] };
+    return {
+      title: title ?? null,
+      title_bn: title ?? null,
+      summary: null,
+      summary_bn: null,
+      key_points: [],
+      tags: [],
+    };
   }
 }
 
@@ -144,6 +185,8 @@ export const Route = createFileRoute("/api/public/extension/save")({
         }
 
         const ai = await summarize(url, parsed.data.title);
+        const fallbackTitle = ai.title ?? parsed.data.title ?? dom ?? url;
+        const fallbackSummary = ai.summary ?? `Saved from browser (${dom ?? "link"}).`;
         const { error } = await dataDb.from("links").insert({
           owner_id: tok.owner_id,
           url,
@@ -152,8 +195,11 @@ export const Route = createFileRoute("/api/public/extension/save")({
           content_type: detectType(url),
           status: "ready",
           source: "import",
-          title: ai.title ?? parsed.data.title ?? dom ?? url,
-          summary: ai.summary ?? `Saved from browser (${dom ?? "link"}).`,
+          title: fallbackTitle,
+          title_bn: ai.title_bn ?? fallbackTitle,
+          summary: fallbackSummary,
+          summary_bn: ai.summary_bn ?? fallbackSummary,
+          key_points: ai.key_points,
           tags: ai.tags,
           fetched_at: new Date().toISOString(),
         });

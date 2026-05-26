@@ -66,6 +66,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -74,8 +75,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Wordmark, Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { LanguageToggle } from "@/components/LanguageToggle";
 import { PageTabs } from "@/components/PageTabs";
 import { useLocalStorage } from "@/lib/local-storage";
+import { useLanguage, pickTitle, pickSummary, type Lang } from "@/lib/i18n";
 import { faviconFor, getDomain, normalizeUrl } from "@/lib/url";
 import {
   fetchLinks,
@@ -310,9 +313,12 @@ function LibraryPage() {
       list = list.filter(
         (l) =>
           (l.title ?? "").toLowerCase().includes(q) ||
+          (l.title_bn ?? "").toLowerCase().includes(q) ||
           (l.summary ?? "").toLowerCase().includes(q) ||
+          (l.summary_bn ?? "").toLowerCase().includes(q) ||
           (l.url ?? "").toLowerCase().includes(q) ||
-          (l.tags ?? []).some((t) => t.toLowerCase().includes(q)),
+          (l.tags ?? []).some((t) => t.toLowerCase().includes(q)) ||
+          (l.key_points ?? []).some((k) => k.toLowerCase().includes(q)),
       );
     }
     if (filters.showDuplicates) {
@@ -1157,6 +1163,8 @@ const CenterToolbar = (() => {
               </TooltipTrigger>
               <TooltipContent>Filters</TooltipContent>
             </Tooltip>
+            <div className="w-px h-5 bg-border mx-1" />
+            <LanguageToggle />
           </div>
         </div>
       </div>
@@ -1455,8 +1463,10 @@ function LinkCard({
   isChecked: boolean;
   onCheck: () => void;
 }) {
-  const Icon = TYPE_ICON[link.content_type];
+  const { lang } = useLanguage();
   const domain = link.domain || getDomain(link.url);
+  const displayTitle = pickTitle(link, lang) || link.url;
+  const displaySummary = pickSummary(link, lang);
   const ago = link.created_at
     ? formatDistanceToNow(new Date(link.created_at), { addSuffix: true })
     : "";
@@ -1467,8 +1477,27 @@ function LinkCard({
     }
   }, [selected]);
 
+  // Hover preview is disabled in bulk-select mode so the trigger area stays
+  // dedicated to checkbox toggling.
+  const withHover = (trigger: React.ReactNode) =>
+    selectMode ? (
+      trigger
+    ) : (
+      <HoverCard openDelay={250} closeDelay={120}>
+        <HoverCardTrigger asChild>{trigger}</HoverCardTrigger>
+        <HoverCardContent
+          align="start"
+          side="right"
+          sideOffset={10}
+          className="w-[22rem] max-w-[90vw] p-4 z-50"
+        >
+          <LinkPreviewCard link={link} lang={lang} />
+        </HoverCardContent>
+      </HoverCard>
+    );
+
   if (view === "grid") {
-    return (
+    return withHover(
       <button
         ref={ref as React.RefObject<HTMLButtonElement>}
         onClick={selectMode ? onCheck : onSelect}
@@ -1492,12 +1521,12 @@ function LinkCard({
               <span className="font-mono text-[10px] text-muted-foreground truncate">{domain}</span>
               {link.pinned && <Pin className="h-3 w-3 text-primary fill-primary" />}
             </div>
-            <h3 className="font-medium text-sm truncate mt-0.5">{link.title || link.url}</h3>
+            <h3 className="font-medium text-sm truncate mt-0.5">{displayTitle}</h3>
           </div>
           <TypeIcon type={link.content_type} className="h-4 w-4 text-primary/70" />
         </div>
-        {link.summary && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{link.summary}</p>
+        {displaySummary && (
+          <p className="text-xs text-muted-foreground line-clamp-2">{displaySummary}</p>
         )}
         <div className="flex items-center gap-1 mt-2 flex-wrap">
           {link.status === "pending" ? (
@@ -1521,11 +1550,11 @@ function LinkCard({
           <span className="font-mono text-[10px] text-muted-foreground/60 ml-auto">{ago}</span>
         </div>
         {link.status === "pending" && <AnalysisProgressBar />}
-      </button>
+      </button>,
     );
   }
 
-  return (
+  return withHover(
     <div
       ref={ref as React.RefObject<HTMLDivElement>}
       onClick={selectMode ? onCheck : onSelect}
@@ -1548,7 +1577,7 @@ function LinkCard({
       <img src={faviconFor(link.url)} alt="" className="h-5 w-5 rounded" loading="lazy" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <h3 className="font-medium text-sm truncate">{link.title || link.url}</h3>
+          <h3 className="font-medium text-sm truncate">{displayTitle}</h3>
           {link.pinned && <Pin className="h-3 w-3 text-primary fill-primary shrink-0" />}
           {link.status === "pending" && (
             <Loader2 className="h-3 w-3 text-muted-foreground animate-spin shrink-0" />
@@ -1571,8 +1600,8 @@ function LinkCard({
             ))
           )}
         </div>
-        {link.summary && link.status === "ready" && (
-          <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{link.summary}</p>
+        {displaySummary && link.status === "ready" && (
+          <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{displaySummary}</p>
         )}
       </div>
       <TypeIcon type={link.content_type} className="h-4 w-4 text-primary/70" />
@@ -1587,6 +1616,98 @@ function LinkCard({
       </button>
       <span className="font-mono text-[10px] text-muted-foreground/60 hidden md:block">{ago}</span>
       {link.status === "pending" && <AnalysisProgressBar />}
+    </div>,
+  );
+}
+
+function LinkPreviewCard({ link, lang }: { link: LinkRow; lang: Lang }) {
+  const title = pickTitle(link, lang);
+  const summary = pickSummary(link, lang);
+  const domain = link.domain || getDomain(link.url);
+  const ago = link.created_at
+    ? formatDistanceToNow(new Date(link.created_at), { addSuffix: true })
+    : "";
+  const Icon = TYPE_ICON[link.content_type];
+  const hasKeyPoints = Array.isArray(link.key_points) && link.key_points.length > 0;
+
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="flex items-start gap-2.5">
+        <img
+          src={faviconFor(link.url)}
+          alt=""
+          className="h-7 w-7 rounded mt-0.5 shrink-0"
+          loading="lazy"
+        />
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold leading-snug text-foreground line-clamp-3">{title}</h4>
+          <div className="flex items-center gap-1.5 mt-1 font-mono text-[10px] text-muted-foreground">
+            <Icon className="h-3 w-3 shrink-0" />
+            <span className="truncate">{domain}</span>
+            {ago && (
+              <>
+                <span>•</span>
+                <span className="shrink-0">{ago}</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {link.status === "pending" ? (
+        <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+          <Loader2 className="h-3 w-3 animate-spin" /> Analyzing…
+        </p>
+      ) : link.status === "failed" ? (
+        <p className="text-xs text-destructive inline-flex items-start gap-1.5">
+          <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+          <span className="line-clamp-3">{link.error_message ?? "Analysis failed"}</span>
+        </p>
+      ) : (
+        <>
+          {summary && (
+            <p className="text-xs leading-relaxed text-foreground/90 line-clamp-[8]">{summary}</p>
+          )}
+          {hasKeyPoints && (
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                Key points
+              </div>
+              <ul className="space-y-1 text-xs">
+                {link.key_points.slice(0, 5).map((kp, idx) => (
+                  <li key={idx} className="flex gap-1.5 items-start">
+                    <span className="text-primary mt-0.5 shrink-0">▸</span>
+                    <span className="text-foreground/85">{kp}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {link.tags && link.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {link.tags.slice(0, 6).map((t) => (
+                <span
+                  key={t}
+                  className="font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-accent text-accent-foreground"
+                >
+                  #{t}
+                </span>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      <a
+        href={link.url}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition shadow-sm"
+      >
+        <ExternalLink className="h-3 w-3" />
+        Open link
+      </a>
     </div>
   );
 }
@@ -1620,6 +1741,16 @@ function DetailPanel({
   allLinks: LinkRow[];
 }) {
   const Icon = TYPE_ICON[link.content_type];
+  const { lang: globalLang } = useLanguage();
+  // Local override lets the user flip the detail panel without changing the
+  // global preference (e.g. quickly cross-check the translation).
+  const [panelLang, setPanelLang] = useState<Lang>(globalLang);
+  useEffect(() => {
+    setPanelLang(globalLang);
+  }, [globalLang, link.id]);
+  const displayTitle = pickTitle(link, panelLang) || link.url;
+  const displaySummary = pickSummary(link, panelLang);
+  const hasKeyPoints = Array.isArray(link.key_points) && link.key_points.length > 0;
   const [tagInput, setTagInput] = useState("");
   const similar = useMemo(
     () =>
@@ -1659,7 +1790,7 @@ function DetailPanel({
         <div className="flex items-start gap-3">
           <img src={faviconFor(link.url)} alt="" className="h-8 w-8 rounded" />
           <div className="flex-1 min-w-0">
-            <h2 className="font-semibold text-base leading-tight">{link.title || link.url}</h2>
+            <h2 className="font-semibold text-base leading-tight">{displayTitle}</h2>
             <a
               href={link.url}
               target="_blank"
@@ -1670,9 +1801,18 @@ function DetailPanel({
             </a>
           </div>
         </div>
+        <a
+          href={link.url}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition shadow-sm"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Open link
+        </a>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         <Pill icon={Icon} label={link.content_type} />
         <Pill
           label={link.status}
@@ -1681,14 +1821,58 @@ function DetailPanel({
           }
         />
         {link.pinned && <Pill icon={Pin} label="pinned" tone="primary" />}
+        <div className="ml-auto inline-flex items-center rounded-full border border-border/60 bg-background p-0.5 text-[10px] font-mono">
+          <button
+            type="button"
+            onClick={() => setPanelLang("en")}
+            aria-pressed={panelLang === "en"}
+            className={`px-2 py-0.5 rounded-full transition ${
+              panelLang === "en"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            EN
+          </button>
+          <button
+            type="button"
+            onClick={() => setPanelLang("bn")}
+            aria-pressed={panelLang === "bn"}
+            className={`px-2 py-0.5 rounded-full transition ${
+              panelLang === "bn"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            বাং
+          </button>
+        </div>
       </div>
 
-      {link.summary && (
+      {displaySummary && (
         <div>
           <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
             Summary
           </div>
-          <p className="text-sm leading-relaxed text-foreground/90">{link.summary}</p>
+          <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">
+            {displaySummary}
+          </p>
+        </div>
+      )}
+
+      {hasKeyPoints && (
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+            Key points
+          </div>
+          <ul className="space-y-1.5">
+            {link.key_points.map((kp, idx) => (
+              <li key={idx} className="flex gap-2 items-start text-sm leading-relaxed">
+                <span className="text-primary mt-1 shrink-0">▸</span>
+                <span className="text-foreground/90">{kp}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -1778,7 +1962,7 @@ function DetailPanel({
                 rel="noreferrer"
                 className="block rounded-xl border border-border/50 px-2.5 py-1.5 hover:border-primary/40 hover:bg-accent/30 transition"
               >
-                <div className="text-xs font-medium truncate">{s.title || s.url}</div>
+                <div className="text-xs font-medium truncate">{pickTitle(s, panelLang)}</div>
                 <div className="font-mono text-[10px] text-muted-foreground truncate">
                   {s.domain}
                 </div>
@@ -2069,6 +2253,7 @@ function SmartSearchDialog({
   links: LinkRow[];
   onPick: (id: string) => void;
 }) {
+  const { lang } = useLanguage();
   const [q, setQ] = useState("");
   const results = useMemo(() => {
     if (!q.trim()) return links.slice(0, 8);
@@ -2077,8 +2262,11 @@ function SmartSearchDialog({
       .filter(
         (l) =>
           (l.title ?? "").toLowerCase().includes(t) ||
+          (l.title_bn ?? "").toLowerCase().includes(t) ||
           (l.summary ?? "").toLowerCase().includes(t) ||
-          l.tags.some((x) => x.toLowerCase().includes(t)),
+          (l.summary_bn ?? "").toLowerCase().includes(t) ||
+          l.tags.some((x) => x.toLowerCase().includes(t)) ||
+          (l.key_points ?? []).some((k) => k.toLowerCase().includes(t)),
       )
       .slice(0, 12);
   }, [links, q]);
@@ -2107,7 +2295,7 @@ function SmartSearchDialog({
             >
               <img src={faviconFor(l.url)} alt="" className="h-4 w-4 rounded" />
               <div className="flex-1 min-w-0">
-                <div className="text-sm truncate">{l.title || l.url}</div>
+                <div className="text-sm truncate">{pickTitle(l, lang)}</div>
                 <div className="font-mono text-[10px] text-muted-foreground truncate">
                   {l.domain}
                 </div>

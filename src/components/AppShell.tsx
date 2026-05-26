@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Wordmark } from "@/components/Logo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { LanguageToggle } from "@/components/LanguageToggle";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
@@ -82,7 +83,10 @@ export function AppShell({
               </SheetContent>
             </Sheet>
             <h1 className="text-sm font-semibold tracking-tight">{title}</h1>
-            <div className="ml-auto flex items-center gap-2">{actions}</div>
+            <div className="ml-auto flex items-center gap-2">
+              <LanguageToggle />
+              {actions}
+            </div>
           </header>
 
           <main className="flex-1 px-6 py-8 lg:px-10 lg:py-10">
