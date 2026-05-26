@@ -257,13 +257,39 @@ function LibraryPage() {
   const collectionsQuery = useQuery({ queryKey: ["collections-list"], queryFn: fetchCollections });
   const allLinks = linksQuery.data ?? [];
 
+  // All mutations below apply their change to the in-memory cache *first*
+  // and only then fire the server request. The user sees star / read /
+  // delete / pin / tag toggles update instantly; if the server call fails
+  // we roll back to `prev`. `onSettled` then refetches so the cache picks
+  // up anything the server set (e.g. `updated_at`).
+  const optimisticUpdate = (update: (links: LinkRow[]) => LinkRow[]): LinkRow[] => {
+    const prev = qc.getQueryData<LinkRow[]>(["links"]) ?? [];
+    qc.setQueryData<LinkRow[]>(["links"], update(prev));
+    return prev;
+  };
+
+  // URLs we just added optimistically — when their realtime INSERT comes
+  // through we skip the duplicate "New link added" toast (the user already
+  // got an immediate "Link saved" toast from the optimistic update).
+  const recentlyAddedUrlsRef = useRef<Set<string>>(new Set());
+
   // Realtime
   useEffect(() => {
     const channel = supabase
       .channel("links-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "links" }, (payload) => {
         qc.invalidateQueries({ queryKey: ["links"] });
-        if (payload.eventType === "INSERT") toast.success("New link added");
+        if (payload.eventType === "INSERT") {
+          const url =
+            (payload.new as { url?: string; normalized_url?: string } | null)?.normalized_url ??
+            (payload.new as { url?: string } | null)?.url ??
+            "";
+          if (recentlyAddedUrlsRef.current.has(url)) {
+            recentlyAddedUrlsRef.current.delete(url);
+            return;
+          }
+          toast.success("New link added");
+        }
       })
       .subscribe();
     return () => {
@@ -396,70 +422,195 @@ function LibraryPage() {
   );
 
   // Mutations
+  // Optimistic add: drop placeholder rows into the cache before the server
+  // call even fires. The user sees the Add input clear and the new "pending"
+  // cards appear instantly — no waiting on the saveLinksPending round trip
+  // (which can be slow on cold-started serverless deploys). The realtime
+  // INSERT push from Supabase later reconciles the optimistic rows with the
+  // real ones; on error we roll back to the previous list.
   const addMut = useMutation({
     mutationFn: addLinks,
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["links"] });
-      const n = res?.count ?? 0;
+    onMutate: async (urls: string[]) => {
+      await qc.cancelQueries({ queryKey: ["links"] });
+      const prev = qc.getQueryData<LinkRow[]>(["links"]) ?? [];
+      const nowIso = new Date().toISOString();
+      const placeholders: LinkRow[] = urls.map((url, i) => {
+        const norm = normalizeUrl(url);
+        const domain = getDomain(norm);
+        recentlyAddedUrlsRef.current.add(norm);
+        return {
+          id: `optimistic-${nowIso}-${i}`,
+          owner_id: "",
+          url,
+          normalized_url: norm,
+          domain,
+          title: domain || url,
+          title_bn: domain || url,
+          summary: "Analyzing…",
+          summary_bn: "Analyzing…",
+          key_points: [],
+          content_type: "other",
+          status: "pending",
+          tags: [],
+          pinned: false,
+          priority: 0,
+          read_at: null,
+          reminder_at: null,
+          source: "manual",
+          error_message: null,
+          fetched_at: null,
+          created_at: nowIso,
+          updated_at: nowIso,
+          deleted_at: null,
+        };
+      });
+      qc.setQueryData<LinkRow[]>(["links"], [...placeholders, ...prev]);
       toast.success(
-        n > 1
-          ? `Saved ${n} links — analyzing in background`
+        urls.length > 1
+          ? `Saved ${urls.length} links — analyzing in background`
           : "Link saved — analyzing in background",
       );
+      return { prev };
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error, _urls, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["links"], ctx.prev);
+      toast.error(e.message);
+    },
+    onSuccess: () => {
+      // Real rows are already in the DB; refetch so the optimistic
+      // placeholders get replaced with the persisted rows (with real ids).
+      qc.invalidateQueries({ queryKey: ["links"] });
+    },
   });
   const deleteMut = useMutation({
     mutationFn: softDeleteLink,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["links"] });
+    onMutate: async (id: string) => {
+      await qc.cancelQueries({ queryKey: ["links"] });
+      const nowIso = new Date().toISOString();
+      const prev = optimisticUpdate((links) =>
+        links.map((l) => (l.id === id ? { ...l, deleted_at: nowIso } : l)),
+      );
       setSelected(null);
       toast.success("Moved to trash");
+      return { prev };
     },
+    onError: (e: Error, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["links"], ctx.prev);
+      toast.error(e.message);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["links"] }),
   });
   const permanentDeleteMut = useMutation({
     mutationFn: permanentlyDelete,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["links"] });
+    onMutate: async (id: string) => {
+      await qc.cancelQueries({ queryKey: ["links"] });
+      const prev = optimisticUpdate((links) => links.filter((l) => l.id !== id));
       setSelected(null);
       toast.success("Deleted permanently");
+      return { prev };
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["links"], ctx.prev);
+      toast.error(e.message);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["links"] }),
   });
   const restoreMut = useMutation({
     mutationFn: restoreLink,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["links"] });
+    onMutate: async (id: string) => {
+      await qc.cancelQueries({ queryKey: ["links"] });
+      const prev = optimisticUpdate((links) =>
+        links.map((l) => (l.id === id ? { ...l, deleted_at: null } : l)),
+      );
       toast.success("Restored");
+      return { prev };
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["links"], ctx.prev);
+      toast.error(e.message);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["links"] }),
   });
   const pinMut = useMutation({
     mutationFn: ({ id, pinned }: { id: string; pinned: boolean }) => togglePin(id, pinned),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["links"] }),
+    onMutate: async ({ id, pinned }) => {
+      await qc.cancelQueries({ queryKey: ["links"] });
+      const prev = optimisticUpdate((links) =>
+        links.map((l) => (l.id === id ? { ...l, pinned } : l)),
+      );
+      return { prev };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["links"], ctx.prev);
+      toast.error(e.message);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["links"] }),
   });
   const priorityMut = useMutation({
     mutationFn: ({ id, priority }: { id: string; priority: 0 | 1 | 2 | 3 }) =>
       setPriority(id, priority),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["links"] }),
-    onError: (e: Error) => toast.error(e.message),
+    onMutate: async ({ id, priority }) => {
+      await qc.cancelQueries({ queryKey: ["links"] });
+      const prev = optimisticUpdate((links) =>
+        links.map((l) => (l.id === id ? { ...l, priority } : l)),
+      );
+      return { prev };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["links"], ctx.prev);
+      toast.error(e.message);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["links"] }),
   });
   const readMut = useMutation({
     mutationFn: ({ id, read }: { id: string; read: boolean }) => setRead(id, read),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["links"] }),
-    onError: (e: Error) => toast.error(e.message),
+    onMutate: async ({ id, read }) => {
+      await qc.cancelQueries({ queryKey: ["links"] });
+      const at = read ? new Date().toISOString() : null;
+      const prev = optimisticUpdate((links) =>
+        links.map((l) => (l.id === id ? { ...l, read_at: at } : l)),
+      );
+      return { prev };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["links"], ctx.prev);
+      toast.error(e.message);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["links"] }),
+  });
+  const emptyTrashMut = useMutation({
+    mutationFn: () => emptyTrash(),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: ["links"] });
+      const prev = optimisticUpdate((links) => links.filter((l) => !l.deleted_at));
+      toast.success("Trash emptied");
+      return { prev };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["links"], ctx.prev);
+      toast.error(e.message);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["links"] }),
   });
   const reminderMut = useMutation({
     mutationFn: ({ id, at }: { id: string; at: string | null }) => setReminder(id, at),
-    onSuccess: (_d, vars) => {
-      qc.invalidateQueries({ queryKey: ["links"] });
-      if (vars.at) {
-        toast.success(`Reminder set for ${new Date(vars.at).toLocaleString()}`);
+    onMutate: async ({ id, at }) => {
+      await qc.cancelQueries({ queryKey: ["links"] });
+      const prev = optimisticUpdate((links) =>
+        links.map((l) => (l.id === id ? { ...l, reminder_at: at } : l)),
+      );
+      if (at) {
+        toast.success(`Reminder set for ${new Date(at).toLocaleString()}`);
       } else {
         toast.success("Reminder cleared");
       }
+      return { prev };
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["links"], ctx.prev);
+      toast.error(e.message);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["links"] }),
   });
 
   const handleAdd = (raw: string) => {
@@ -885,7 +1036,7 @@ function LibraryPage() {
               selectMode={selectMode}
               setSelectMode={setSelectMode}
               onAdd={handleAdd}
-              addPending={addMut.isPending}
+              addPending={false}
               onSmartSearch={() => setSmartOpen(true)}
               onImport={() => setImportOpen(true)}
               onExport={handleExport}
@@ -954,19 +1105,23 @@ function LibraryPage() {
                           variant="ghost"
                           className="h-7 font-mono text-xs"
                           disabled={!hasSelection}
-                          onClick={async () => {
+                          onClick={() => {
                             const ids = Array.from(selectedIds);
-                            try {
-                              await restoreMany(ids);
-                              qc.invalidateQueries({ queryKey: ["links"] });
-                              toast.success(
-                                `Restored ${ids.length} link${ids.length === 1 ? "" : "s"}`,
-                              );
-                              setSelectedIds(new Set());
-                              setSelectMode(false);
-                            } catch (e) {
-                              toast.error((e as Error).message);
-                            }
+                            const idSet = new Set(ids);
+                            const prev = optimisticUpdate((links) =>
+                              links.map((l) => (idSet.has(l.id) ? { ...l, deleted_at: null } : l)),
+                            );
+                            toast.success(
+                              `Restored ${ids.length} link${ids.length === 1 ? "" : "s"}`,
+                            );
+                            setSelectedIds(new Set());
+                            setSelectMode(false);
+                            restoreMany(ids)
+                              .then(() => qc.invalidateQueries({ queryKey: ["links"] }))
+                              .catch((e: Error) => {
+                                qc.setQueryData(["links"], prev);
+                                toast.error(e.message);
+                              });
                           }}
                         >
                           <RotateCcw className="h-3 w-3 mr-1" />
@@ -977,7 +1132,7 @@ function LibraryPage() {
                           variant="ghost"
                           className="h-7 font-mono text-xs text-destructive"
                           disabled={!hasSelection}
-                          onClick={async () => {
+                          onClick={() => {
                             const ids = Array.from(selectedIds);
                             if (
                               !window.confirm(
@@ -986,17 +1141,21 @@ function LibraryPage() {
                             ) {
                               return;
                             }
-                            try {
-                              await permanentlyDeleteMany(ids);
-                              qc.invalidateQueries({ queryKey: ["links"] });
-                              toast.success(
-                                `Deleted ${ids.length} link${ids.length === 1 ? "" : "s"} forever`,
-                              );
-                              setSelectedIds(new Set());
-                              setSelectMode(false);
-                            } catch (e) {
-                              toast.error((e as Error).message);
-                            }
+                            const idSet = new Set(ids);
+                            const prev = optimisticUpdate((links) =>
+                              links.filter((l) => !idSet.has(l.id)),
+                            );
+                            toast.success(
+                              `Deleted ${ids.length} link${ids.length === 1 ? "" : "s"} forever`,
+                            );
+                            setSelectedIds(new Set());
+                            setSelectMode(false);
+                            permanentlyDeleteMany(ids)
+                              .then(() => qc.invalidateQueries({ queryKey: ["links"] }))
+                              .catch((e: Error) => {
+                                qc.setQueryData(["links"], prev);
+                                toast.error(e.message);
+                              });
                           }}
                         >
                           <Trash2 className="h-3 w-3 mr-1" />
@@ -1020,19 +1179,26 @@ function LibraryPage() {
                           variant="ghost"
                           className="h-7 font-mono text-xs text-destructive"
                           disabled={!hasSelection}
-                          onClick={async () => {
+                          onClick={() => {
                             const ids = Array.from(selectedIds);
-                            try {
-                              await softDeleteMany(ids);
-                              qc.invalidateQueries({ queryKey: ["links"] });
-                              toast.success(
-                                `Moved ${ids.length} link${ids.length === 1 ? "" : "s"} to trash`,
-                              );
-                              setSelectedIds(new Set());
-                              setSelectMode(false);
-                            } catch (e) {
-                              toast.error((e as Error).message);
-                            }
+                            const idSet = new Set(ids);
+                            const nowIso = new Date().toISOString();
+                            const prev = optimisticUpdate((links) =>
+                              links.map((l) =>
+                                idSet.has(l.id) ? { ...l, deleted_at: nowIso } : l,
+                              ),
+                            );
+                            toast.success(
+                              `Moved ${ids.length} link${ids.length === 1 ? "" : "s"} to trash`,
+                            );
+                            setSelectedIds(new Set());
+                            setSelectMode(false);
+                            softDeleteMany(ids)
+                              .then(() => qc.invalidateQueries({ queryKey: ["links"] }))
+                              .catch((e: Error) => {
+                                qc.setQueryData(["links"], prev);
+                                toast.error(e.message);
+                              });
                           }}
                         >
                           <Trash2 className="h-3 w-3 mr-1" />
@@ -1156,12 +1322,40 @@ function LibraryPage() {
                   setSelected(null);
                 }}
                 onPin={(id, p) => pinMut.mutate({ id, pinned: !p })}
-                onRetry={(id) =>
-                  retryAnalysis(id).then(() => qc.invalidateQueries({ queryKey: ["links"] }))
-                }
-                onUpdate={async (id, patch) => {
-                  await updateLink(id, patch);
-                  qc.invalidateQueries({ queryKey: ["links"] });
+                onRetry={(id) => {
+                  const prev = optimisticUpdate((links) =>
+                    links.map((l) =>
+                      l.id === id
+                        ? {
+                            ...l,
+                            status: "pending",
+                            summary: "Analyzing\u2026",
+                            summary_bn: "Analyzing\u2026",
+                            error_message: null,
+                          }
+                        : l,
+                    ),
+                  );
+                  retryAnalysis(id)
+                    .then(() => qc.invalidateQueries({ queryKey: ["links"] }))
+                    .catch((e: Error) => {
+                      qc.setQueryData(["links"], prev);
+                      toast.error(e.message);
+                    });
+                }}
+                onUpdate={(id, patch) => {
+                  const prev = optimisticUpdate((links) =>
+                    links.map((l) => (l.id === id ? { ...l, ...patch } : l)),
+                  );
+                  return updateLink(id, patch)
+                    .then(() => {
+                      qc.invalidateQueries({ queryKey: ["links"] });
+                    })
+                    .catch((e: Error) => {
+                      qc.setQueryData(["links"], prev);
+                      toast.error(e.message);
+                      throw e;
+                    });
                 }}
                 onSetPriority={(id, p) => priorityMut.mutate({ id, priority: p })}
                 onSetRead={(id, r) => readMut.mutate({ id, read: r })}
@@ -1185,7 +1379,9 @@ function LibraryPage() {
           open={recycleOpen}
           onOpenChange={setRecycleOpen}
           links={allLinks.filter((l) => l.deleted_at)}
-          onRefresh={() => qc.invalidateQueries({ queryKey: ["links"] })}
+          onRestore={(id) => restoreMut.mutate(id)}
+          onPermanentDelete={(id) => permanentDeleteMut.mutate(id)}
+          onEmptyTrash={() => emptyTrashMut.mutate()}
         />
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
         <ImportDialog open={importOpen} onOpenChange={setImportOpen} onImport={handleAdd} />
@@ -1201,13 +1397,24 @@ function LibraryPage() {
         <BulkTagDialog
           open={bulkTagOpen}
           onOpenChange={setBulkTagOpen}
-          onApply={async (tag) => {
-            await bulkAddTag(Array.from(selectedIds), tag);
-            qc.invalidateQueries({ queryKey: ["links"] });
+          onApply={(tag) => {
+            const ids = Array.from(selectedIds);
+            const idSet = new Set(ids);
+            const prev = optimisticUpdate((links) =>
+              links.map((l) =>
+                idSet.has(l.id) && !l.tags.includes(tag) ? { ...l, tags: [...l.tags, tag] } : l,
+              ),
+            );
+            toast.success(`Added "${tag}" to ${ids.length} link${ids.length === 1 ? "" : "s"}`);
             setBulkTagOpen(false);
             setSelectMode(false);
             setSelectedIds(new Set());
-            toast.success(`Added "${tag}" to ${selectedIds.size} links`);
+            bulkAddTag(ids, tag)
+              .then(() => qc.invalidateQueries({ queryKey: ["links"] }))
+              .catch((e: Error) => {
+                qc.setQueryData(["links"], prev);
+                toast.error(e.message);
+              });
           }}
         />
       </div>
@@ -2616,12 +2823,16 @@ function RecycleBinDialog({
   open,
   onOpenChange,
   links,
-  onRefresh,
+  onRestore,
+  onPermanentDelete,
+  onEmptyTrash,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   links: LinkRow[];
-  onRefresh: () => void;
+  onRestore: (id: string) => void;
+  onPermanentDelete: (id: string) => void;
+  onEmptyTrash: () => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -2650,10 +2861,7 @@ function RecycleBinDialog({
                 size="sm"
                 variant="ghost"
                 className="h-7 text-xs"
-                onClick={async () => {
-                  await restoreLink(l.id);
-                  onRefresh();
-                }}
+                onClick={() => onRestore(l.id)}
               >
                 Restore
               </Button>
@@ -2661,10 +2869,7 @@ function RecycleBinDialog({
                 size="sm"
                 variant="ghost"
                 className="h-7 text-xs text-destructive"
-                onClick={async () => {
-                  await permanentlyDelete(l.id);
-                  onRefresh();
-                }}
+                onClick={() => onPermanentDelete(l.id)}
               >
                 Delete
               </Button>
@@ -2674,10 +2879,8 @@ function RecycleBinDialog({
         <DialogFooter>
           <Button
             variant="destructive"
-            onClick={async () => {
-              await emptyTrash();
-              onRefresh();
-              toast.success("Trash emptied");
+            onClick={() => {
+              onEmptyTrash();
               onOpenChange(false);
             }}
             disabled={!links.length}

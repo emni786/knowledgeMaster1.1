@@ -1,8 +1,26 @@
+// Kept in lockstep with the server-side normalizers in
+// `src/lib/links.functions.ts` and `src/routes/api/public/extension/save.ts`.
+// The frontend uses this for (a) the duplicate-URL guard in handleAdd and
+// (b) matching realtime INSERT payloads against `recentlyAddedUrlsRef`, so
+// the two implementations must produce byte-identical output for the same
+// input — otherwise duplicates slip through and the user gets phantom
+// "New link added" toasts on top of their own optimistic adds.
 export function normalizeUrl(raw: string): string {
   try {
     const u = new URL(raw.trim());
     u.hash = "";
-    return u.toString();
+    for (const p of [
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_term",
+      "utm_content",
+      "ref",
+      "ref_src",
+    ]) {
+      u.searchParams.delete(p);
+    }
+    return u.toString().replace(/\/$/, "");
   } catch {
     return raw.trim();
   }
