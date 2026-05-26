@@ -625,6 +625,33 @@ export const permanentlyDeleteLinkServer = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const permanentlyDeleteManyLinksServer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ ids: z.array(z.string().uuid()).min(1) }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId, dataNeedsScoping } = context;
+    const del = supabase.from("links").delete().in("id", data.ids);
+    if (dataNeedsScoping) del.eq("owner_id", userId);
+    const { error } = await del;
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const restoreManyLinksServer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ ids: z.array(z.string().uuid()).min(1) }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId, dataNeedsScoping } = context;
+    const upd = supabase
+      .from("links")
+      .update({ deleted_at: null } as never)
+      .in("id", data.ids);
+    if (dataNeedsScoping) upd.eq("owner_id", userId);
+    const { error } = await upd;
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const emptyTrashServer = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
