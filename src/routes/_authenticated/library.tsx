@@ -68,6 +68,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -198,6 +208,7 @@ function LibraryPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   type LibraryTab = "all" | "pinned" | "failed" | "trash";
@@ -891,7 +902,7 @@ function LibraryPage() {
                 className="h-9 w-9 text-destructive hover:bg-destructive/10 ml-auto"
                 onClick={() => {
                   setMobileSidebarOpen(false);
-                  handleSignOut();
+                  setSignOutConfirmOpen(true);
                 }}
                 aria-label="Sign out"
               >
@@ -1013,7 +1024,7 @@ function LibraryPage() {
                     variant="ghost"
                     size="icon"
                     className={`h-9 w-9 hover:bg-destructive/10 hover:text-destructive ${collapsed ? "" : "ml-auto"}`}
-                    onClick={handleSignOut}
+                    onClick={() => setSignOutConfirmOpen(true)}
                   >
                     <LogOut className="h-4 w-4" />
                   </Button>
@@ -1383,6 +1394,29 @@ function LibraryPage() {
           onPermanentDelete={(id) => permanentDeleteMut.mutate(id)}
           onEmptyTrash={() => emptyTrashMut.mutate()}
         />
+        <AlertDialog open={signOutConfirmOpen} onOpenChange={setSignOutConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="font-mono">Sign out?</AlertDialogTitle>
+              <AlertDialogDescription>
+                You&apos;ll be returned to the sign-in page. Anything you have not saved yet (a URL
+                you were about to paste, an unsubmitted form) will be lost.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="font-mono text-xs">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="font-mono text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => {
+                  setSignOutConfirmOpen(false);
+                  handleSignOut();
+                }}
+              >
+                Sign out
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
         <ImportDialog open={importOpen} onOpenChange={setImportOpen} onImport={handleAdd} />
         <SmartSearchDialog
@@ -2834,62 +2868,114 @@ function RecycleBinDialog({
   onPermanentDelete: (id: string) => void;
   onEmptyTrash: () => void;
 }) {
+  // Permanent deletion is irreversible — gate both the per-row delete and
+  // "Empty trash" behind an explicit confirm so a fat-finger tap doesn't
+  // nuke a link the user actually wanted to restore later.
+  const [pendingDelete, setPendingDelete] = useState<LinkRow | null>(null);
+  const [emptyConfirmOpen, setEmptyConfirmOpen] = useState(false);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="font-mono">Recycle bin</DialogTitle>
-          <DialogDescription>Restore links or delete them permanently.</DialogDescription>
-        </DialogHeader>
-        <div className="max-h-[50vh] overflow-y-auto space-y-1.5 scrollbar-thin">
-          {links.length === 0 && (
-            <p className="text-sm text-muted-foreground py-8 text-center">Trash is empty.</p>
-          )}
-          {links.map((l) => (
-            <div
-              key={l.id}
-              className="flex items-center gap-2 rounded-xl border border-border/50 px-2 py-1.5"
-            >
-              <img src={faviconFor(l.url)} alt="" className="h-4 w-4 rounded" />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs truncate">{l.title || l.url}</div>
-                <div className="font-mono text-[10px] text-muted-foreground truncate">
-                  {l.domain}
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-mono">Recycle bin</DialogTitle>
+            <DialogDescription>Restore links or delete them permanently.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[50vh] overflow-y-auto space-y-1.5 scrollbar-thin">
+            {links.length === 0 && (
+              <p className="text-sm text-muted-foreground py-8 text-center">Trash is empty.</p>
+            )}
+            {links.map((l) => (
+              <div
+                key={l.id}
+                className="flex items-center gap-2 rounded-xl border border-border/50 px-2 py-1.5"
+              >
+                <img src={faviconFor(l.url)} alt="" className="h-4 w-4 rounded" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs truncate">{l.title || l.url}</div>
+                  <div className="font-mono text-[10px] text-muted-foreground truncate">
+                    {l.domain}
+                  </div>
                 </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => onRestore(l.id)}
+                >
+                  Restore
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs text-destructive"
+                  onClick={() => setPendingDelete(l)}
+                >
+                  Delete
+                </Button>
               </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 text-xs"
-                onClick={() => onRestore(l.id)}
-              >
-                Restore
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 text-xs text-destructive"
-                onClick={() => onPermanentDelete(l.id)}
-              >
-                Delete
-              </Button>
-            </div>
-          ))}
-        </div>
-        <DialogFooter>
-          <Button
-            variant="destructive"
-            onClick={() => {
-              onEmptyTrash();
-              onOpenChange(false);
-            }}
-            disabled={!links.length}
-          >
-            Empty trash
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="destructive"
+              onClick={() => setEmptyConfirmOpen(true)}
+              disabled={!links.length}
+            >
+              Empty trash
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(v) => !v && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-mono">Delete this link forever?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete?.title || pendingDelete?.url
+                ? `"${pendingDelete.title || pendingDelete.url}" will be permanently removed. This cannot be undone.`
+                : "This link will be permanently removed. This cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-mono text-xs">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="font-mono text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (pendingDelete) onPermanentDelete(pendingDelete.id);
+                setPendingDelete(null);
+              }}
+            >
+              Delete forever
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={emptyConfirmOpen} onOpenChange={setEmptyConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-mono">Empty the trash?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {links.length} link{links.length === 1 ? "" : "s"} will be permanently deleted. This
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-mono text-xs">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="font-mono text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                setEmptyConfirmOpen(false);
+                onEmptyTrash();
+                onOpenChange(false);
+              }}
+            >
+              Empty trash
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
