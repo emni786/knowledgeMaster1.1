@@ -132,15 +132,59 @@ function extractMeta(html: string): { title: string; description: string; siteNa
     siteName: decodeEntities(siteName),
   };
 }
+// Named HTML entities we want to handle in OG / meta text and in the
+// stripped page body. Kept small on purpose; we lean on the numeric / hex
+// fallback below for anything more exotic.
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  copy: "\u00a9",
+  reg: "\u00ae",
+  trade: "\u2122",
+  hellip: "\u2026",
+  mdash: "\u2014",
+  ndash: "\u2013",
+  laquo: "\u00ab",
+  raquo: "\u00bb",
+  ldquo: "\u201c",
+  rdquo: "\u201d",
+  lsquo: "\u2018",
+  rsquo: "\u2019",
+  bull: "\u2022",
+  middot: "\u00b7",
+};
+
+// Decodes the entity flavours we actually see in the wild:
+// * named entities (`&amp;`, `&nbsp;`, `&hellip;`, ...).
+// * decimal numeric references (`&#9989;`).
+// * hex numeric references (`&#x9a1;`, `&#xff1c;`). Facebook in particular
+//   emits Bangla / non-Latin OG tags using hex escapes, so missing this
+//   case caused titles to land in the DB as the literal text
+//   "UI &#x9a1;&#x9bf;..." instead of "UI ডিজাইনারদের ...".
+// Uses `String.fromCodePoint` so astral characters (emoji, CJK extension B)
+// round-trip correctly too.
 function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
+  if (!s) return s;
+  return s.replace(
+    /&(?:#(x?)([0-9a-fA-F]+)|([a-zA-Z][a-zA-Z0-9]+));/g,
+    (raw, hexFlag, code, name) => {
+      if (name) {
+        const replacement = NAMED_ENTITIES[name.toLowerCase()];
+        return replacement ?? raw;
+      }
+      try {
+        const num = hexFlag ? parseInt(code, 16) : parseInt(code, 10);
+        if (!Number.isFinite(num) || num <= 0 || num > 0x10ffff) return raw;
+        return String.fromCodePoint(num);
+      } catch {
+        return raw;
+      }
+    },
+  );
 }
 function stripHtml(html: string): string {
   // Prefer the main article body when present so the AI doesn't waste its
@@ -148,7 +192,7 @@ function stripHtml(html: string): string {
   const mainMatch =
     html.match(/<article\b[\s\S]*?<\/article>/i) ?? html.match(/<main\b[\s\S]*?<\/main>/i);
   const source = mainMatch && mainMatch[0].length > 600 ? mainMatch[0] : html;
-  return source
+  const text = source
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
@@ -160,6 +204,9 @@ function stripHtml(html: string): string {
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  // Decode entities AFTER stripping tags so the AI sees real Bangla / CJK /
+  // emoji characters instead of `&#x9a1;`-style escapes.
+  return decodeEntities(text);
 }
 
 const CHROME_UA =
