@@ -63,13 +63,47 @@ function AuthPage() {
 
   const signInWithGoogle = async () => {
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({
+    // Build the OAuth URL ourselves so we can pre-flight it. If the project
+    // hasn't enabled the Google provider, Supabase returns a 400 JSON error
+    // page instead of a redirect to Google — without this probe the browser
+    // would navigate to that raw JSON and the user just sees an opaque
+    // {"code":400,"error_code":"validation_failed","msg":"Unsupported provider…"}.
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/library` },
+      options: {
+        redirectTo: `${window.location.origin}/library`,
+        skipBrowserRedirect: true,
+      },
     });
-    // signInWithOAuth triggers a redirect on success; we only fall through on error.
-    setLoading(false);
-    if (error) toast.error(error.message);
+    if (error) {
+      setLoading(false);
+      return toast.error(error.message);
+    }
+    const oauthUrl = data?.url;
+    if (!oauthUrl) {
+      setLoading(false);
+      return toast.error("Could not start Google sign-in. Try again.");
+    }
+    try {
+      const probe = await fetch(oauthUrl, { redirect: "manual" });
+      if (probe.type !== "opaqueredirect" && probe.status >= 400) {
+        let detail = "";
+        try {
+          const body = (await probe.clone().json()) as { msg?: string };
+          if (body.msg) detail = ` (${body.msg})`;
+        } catch {
+          // body wasn't JSON — ignore
+        }
+        setLoading(false);
+        return toast.error(
+          `Google sign-in isn't enabled on this Supabase project${detail}. Use email sign-in below, or ask the admin to enable Google in Supabase → Authentication → Providers.`,
+        );
+      }
+    } catch {
+      // Probe failed for network / CORS reasons; fall through and let the
+      // browser try the redirect normally so a working setup still works.
+    }
+    window.location.href = oauthUrl;
   };
 
   return (
