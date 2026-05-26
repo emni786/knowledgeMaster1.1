@@ -7,7 +7,10 @@ const ContentType = z.enum(["article", "video", "repo", "docs", "tool", "thread"
 
 const Analysis = z.object({
   title: z.string().min(1).max(200),
-  summary: z.string().min(1).max(400),
+  title_bn: z.string().min(1).max(200),
+  summary: z.string().min(1).max(700),
+  summary_bn: z.string().min(1).max(900),
+  key_points: z.array(z.string().min(2).max(160)).min(0).max(6).default([]),
   tags: z.array(z.string().min(2).max(40)).min(1).max(6),
   content_type: ContentType,
 });
@@ -121,10 +124,18 @@ async function aiAnalyze(input: {
   if (!(await getAIConfig())) return null;
 
   const system =
-    "You are a meticulous web link analyzer. Reply with strict JSON only matching the schema: " +
-    `{"title":"<concise canonical title>","summary":"<2 sentence neutral summary, what it is + why it matters>","tags":["kebab-case","3 to 6"],"content_type":"article|video|repo|docs|tool|thread|other"}. ` +
-    "Tags MUST be conceptual and reusable (e.g. 'machine-learning','rust-lang','startup-funding'), lowercase kebab-case, no '#'. " +
-    "Title <= 120 chars. Summary <= 280 chars. Be specific, no marketing fluff.";
+    "You are a meticulous web-link analyzer producing bilingual (English + Bangla) metadata for a personal knowledge library. " +
+    "Reply with STRICT JSON ONLY, no prose, matching exactly this schema:\n" +
+    `{"title":"<concise English title>","title_bn":"<Bangla title>","summary":"<English summary, 3-5 sentences>","summary_bn":"<Bangla summary, 3-5 sentences>","key_points":["<short English bullet>","3 to 5 items"],"tags":["kebab-case","3 to 6"],"content_type":"article|video|repo|docs|tool|thread|other"}.\n` +
+    "Rules:\n" +
+    "- title: concise canonical English title, <= 140 chars, no clickbait, no site name suffix.\n" +
+    "- title_bn: natural Bangla title in Bangla script (বাংলা). Keep technical / proper nouns in English (e.g. React, TypeScript, GPU, GitHub, OpenAI, API, LLM, machine learning, startup). Do NOT transliterate them. <= 160 chars.\n" +
+    "- summary: 3 to 5 sentence English paragraph. Cover: WHAT it is, the KEY substance / main idea, and WHO it's useful for or WHY it matters. Be concrete, specific, neutral. No marketing fluff, no 'this article discusses' filler. 280-600 chars target.\n" +
+    "- summary_bn: same content as summary but in natural Bangla (Bangla script). MUST preserve all technical / proper-noun terms in English exactly (React, API, framework, dataset, etc.). Read like a knowledgeable Bangla speaker explaining it to a friend. 3 to 5 sentences. 320-800 chars target.\n" +
+    "- key_points: 3 to 5 short English bullet highlights (each <= 140 chars). Concrete facts / takeaways extracted from the content. No duplication of the summary's opening sentence.\n" +
+    "- tags: 3 to 6 conceptual, reusable lowercase kebab-case slugs (e.g. 'machine-learning','rust-lang','startup-funding'). No '#'.\n" +
+    "- content_type: best single match from the enum.\n" +
+    "If the page content is thin (e.g. only a title), still produce useful bilingual output based on the URL, domain, and title — never refuse, never leave fields empty.";
 
   const user = JSON.stringify({
     url: input.url,
@@ -159,6 +170,10 @@ async function aiAnalyze(input: {
           .filter(Boolean),
       ),
     ).slice(0, 6);
+    parsed.key_points = (parsed.key_points ?? [])
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0)
+      .slice(0, 5);
     return parsed;
   } catch {
     return null;
@@ -178,10 +193,14 @@ async function analyzeOne(
   const ai = await aiAnalyze({ url, domain, meta, bodyText });
   if (ai) return { analysis: ai, domain, html_present: !!html };
 
-  // Fallback: deterministic but useful
+  // Fallback: deterministic but useful. Bangla fields mirror English when
+  // the AI is unavailable; UI displays them transparently.
   const fallback: Analysis = {
     title: meta.title || domain || url,
+    title_bn: meta.title || domain || url,
     summary: meta.description || `Saved link from ${domain ?? "the web"}.`,
+    summary_bn: meta.description || `${domain ?? "web"} থেকে save করা link।`,
+    key_points: [],
     tags: domain
       ? [
           domain
@@ -216,7 +235,10 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
         normalized_url: norm,
         domain,
         title: domain || url,
+        title_bn: domain || url,
         summary: "Analyzing…",
+        summary_bn: "Analyzing…",
+        key_points: [] as string[],
         content_type: "other" as const,
         status: "pending" as const,
         tags: [] as string[],
@@ -241,7 +263,10 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
             .from("links")
             .update({
               title: analysis.title,
+              title_bn: analysis.title_bn,
               summary: analysis.summary,
+              summary_bn: analysis.summary_bn,
+              key_points: analysis.key_points,
               tags: analysis.tags,
               content_type: analysis.content_type,
               status: "ready",
@@ -469,7 +494,10 @@ export const reanalyzeLink = createServerFn({ method: "POST" })
         .from("links")
         .update({
           title: analysis.title,
+          title_bn: analysis.title_bn,
           summary: analysis.summary,
+          summary_bn: analysis.summary_bn,
+          key_points: analysis.key_points,
           tags: analysis.tags,
           content_type: analysis.content_type,
           status: "ready",
