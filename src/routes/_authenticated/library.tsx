@@ -30,6 +30,9 @@ import {
   EyeOff,
   RotateCcw,
   MoreHorizontal,
+  Pencil,
+  Check,
+  X,
   Filter,
   FileText,
   Video,
@@ -129,7 +132,12 @@ import {
   setRead,
   setReminder,
 } from "@/lib/api/links";
-import { fetchCollections, createCollection, deleteCollection } from "@/lib/api/collections";
+import {
+  fetchCollections,
+  createCollection,
+  deleteCollection,
+  renameCollection,
+} from "@/lib/api/collections";
 import type { LinkRow, FilterState, ContentType, LinkStatus } from "@/lib/types";
 import { DEFAULT_FILTERS } from "@/lib/types";
 import { formatDistanceToNow } from "date-fns";
@@ -1906,7 +1914,41 @@ function CollectionsBlock({
 }) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
+  // Track which row is currently being inline-renamed; null when not editing.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+  // Drives the confirm-delete AlertDialog. Stores the {id, name} of the
+  // collection awaiting confirmation so the dialog can show its name.
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
   const list = collections;
+
+  const submitRename = async () => {
+    if (!editingId) return;
+    const trimmed = editingName.trim();
+    if (!trimmed) {
+      // Empty name: treat as cancel rather than error so users can bail out
+      // by clearing the input.
+      setEditingId(null);
+      setEditingName("");
+      return;
+    }
+    const original = list.find((c) => c.id === editingId);
+    if (!original || original.name === trimmed) {
+      setEditingId(null);
+      setEditingName("");
+      return;
+    }
+    setEditingId(null);
+    setEditingName("");
+    try {
+      await renameCollection(original.id, trimmed);
+      qc.invalidateQueries({ queryKey: ["collections-list"] });
+      toast.success(`Renamed to "${trimmed}"`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to rename collection");
+    }
+  };
+
   return (
     <div className="px-4 py-3 border-t border-border/50">
       <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
@@ -1919,15 +1961,98 @@ function CollectionsBlock({
         >
           # All links
         </button>
-        {list.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => onSelect(c.id)}
-            className={`w-full text-left px-2 py-1.5 rounded-lg text-xs font-mono hover:bg-primary/10 hover:text-primary truncate ${activeId === c.id ? "bg-primary/10 text-primary" : ""}`}
-          >
-            # {c.name}
-          </button>
-        ))}
+        {list.map((c) => {
+          const isActive = activeId === c.id;
+          const isEditing = editingId === c.id;
+          if (isEditing) {
+            return (
+              <div key={c.id} className="flex items-center gap-1 px-1 py-1 rounded-lg bg-primary/5">
+                <Input
+                  autoFocus
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void submitRename();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      setEditingId(null);
+                      setEditingName("");
+                    }
+                  }}
+                  className="h-7 text-xs font-mono flex-1"
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 hover:bg-primary/10 hover:text-primary"
+                  onClick={() => void submitRename()}
+                  aria-label="Save name"
+                >
+                  <Check className="h-3 w-3" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => {
+                    setEditingId(null);
+                    setEditingName("");
+                  }}
+                  aria-label="Cancel rename"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            );
+          }
+          return (
+            <div
+              key={c.id}
+              className={`group flex items-center rounded-lg hover:bg-primary/10 ${isActive ? "bg-primary/10" : ""}`}
+            >
+              <button
+                onClick={() => onSelect(c.id)}
+                className={`flex-1 min-w-0 text-left px-2 py-1.5 text-xs font-mono truncate hover:text-primary ${isActive ? "text-primary" : ""}`}
+              >
+                # {c.name}
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={(e) => e.stopPropagation()}
+                    className="opacity-60 hover:opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100 lg:data-[state=open]:opacity-100 mr-1 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition"
+                    aria-label={`More actions for ${c.name}`}
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="font-mono text-xs">
+                  <DropdownMenuItem
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      setEditingId(c.id);
+                      setEditingName(c.name);
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5 mr-2" /> Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      setPendingDelete({ id: c.id, name: c.name });
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          );
+        })}
       </div>
       <form
         onSubmit={async (e) => {
@@ -1950,6 +2075,48 @@ function CollectionsBlock({
           <Plus className="h-3 w-3" />
         </Button>
       </form>
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-mono">
+              Delete collection{pendingDelete ? ` "${pendingDelete.name}"` : ""}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the collection itself. The links inside it stay in your library &mdash;
+              only their membership in this collection is cleared.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-mono text-xs">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="font-mono text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!pendingDelete) return;
+                const { id, name: deletedName } = pendingDelete;
+                setPendingDelete(null);
+                // If the deleted collection was the active filter, fall back
+                // to "All links" so we don't end up on an empty view.
+                if (activeId === id) onSelect(null);
+                try {
+                  await deleteCollection(id);
+                  qc.invalidateQueries({ queryKey: ["collections-list"] });
+                  toast.success(`Deleted "${deletedName}"`);
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Failed to delete collection");
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -2081,7 +2248,13 @@ function LinkCard({
           align="start"
           side="right"
           sideOffset={10}
-          className="w-[22rem] max-w-[90vw] p-4 z-50"
+          // Keep the popup off the viewport edges and let Radix flip it to
+          // the left / above if there's no room (e.g. detail panel open or
+          // a wide LinkPreviewCard pushes us off-screen). The max-h + scroll
+          // covers tall previews so they don't get clipped vertically.
+          collisionPadding={16}
+          avoidCollisions
+          className="w-[22rem] max-w-[min(22rem,calc(100vw-2rem))] max-h-[calc(100vh-6rem)] overflow-y-auto scrollbar-thin p-4 z-50"
         >
           <LinkPreviewCard link={link} lang={lang} />
         </HoverCardContent>
