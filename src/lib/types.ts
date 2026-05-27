@@ -1,6 +1,7 @@
 export type ContentType = "article" | "video" | "repo" | "docs" | "tool" | "thread" | "other";
 export type LinkStatus = "pending" | "ready" | "failed";
 export type LinkSource = "manual" | "telegram" | "import";
+export type SourceLang = "en" | "bn";
 
 export interface LinkRow {
   id: string;
@@ -17,6 +18,10 @@ export interface LinkRow {
   status: LinkStatus;
   tags: string[];
   pinned: boolean;
+  // Detected source language of the link content. Drives the UI's default
+  // language pick: when set to 'bn' we show the Bangla fields by default
+  // and treat the English ones as an optional translation, and vice versa.
+  source_lang: SourceLang;
   // Importance (0 = none, 1–3 = ★ ★★ ★★★). Persisted, surfaced on cards
   // and the detail panel; users can also filter by minimum stars.
   priority: number;

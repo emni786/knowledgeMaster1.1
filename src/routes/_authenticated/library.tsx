@@ -99,7 +99,17 @@ import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { PageTabs } from "@/components/PageTabs";
 import { useLocalStorage } from "@/lib/local-storage";
-import { useLanguage, pickTitle, pickSummary, type Lang } from "@/lib/i18n";
+import {
+  useLanguage,
+  pickTitle,
+  pickSummary,
+  resolveLang,
+  type Lang,
+  type LangPref,
+} from "@/lib/i18n";
+import { useDueReminders } from "@/lib/notifications";
+import { NotificationBell } from "@/components/NotificationBell";
+import { SetReminderDialog } from "@/components/SetReminderDialog";
 import { faviconFor, getDomain, normalizeUrl } from "@/lib/url";
 import {
   fetchLinks,
@@ -209,6 +219,9 @@ function LibraryPage() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
+  // Confirms permanent (irreversible) bulk delete from the toolbar selection.
+  // Single-link permanent delete is confirmed inside the detail panel itself.
+  const [bulkPermanentDeleteOpen, setBulkPermanentDeleteOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   type LibraryTab = "all" | "pinned" | "failed" | "trash";
@@ -467,6 +480,9 @@ function LibraryPage() {
           priority: 0,
           read_at: null,
           reminder_at: null,
+          // Placeholder before the analyzer runs; the real value is filled in
+          // once analysis completes (and we default sensibly via pickTitle).
+          source_lang: "en",
           source: "manual",
           error_message: null,
           fetched_at: null,
@@ -736,39 +752,16 @@ function LibraryPage() {
     }
   };
 
-  // Reminder watcher: every minute (and on mount / when allLinks changes)
-  // surface due, undeleted reminders that haven't been notified yet this
-  // session. The reminder itself stays set until the user clears it, so a
-  // late open of the app still nudges them.
-  const notifiedRemindersRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    const tick = () => {
-      const now = Date.now();
-      for (const l of allLinks) {
-        if (
-          l.reminder_at &&
-          !l.deleted_at &&
-          !notifiedRemindersRef.current.has(l.id) &&
-          new Date(l.reminder_at).getTime() <= now
-        ) {
-          notifiedRemindersRef.current.add(l.id);
-          const label = l.title || l.domain || l.url;
-          toast(`Reminder: ${label}`, {
-            description: "You set a reminder to read this.",
-            duration: 8000,
-            action: {
-              label: "Open",
-              onClick: () => handleSelectLink(l.id),
-            },
-          });
-        }
-      }
-    };
-    tick();
-    const id = window.setInterval(tick, 60_000);
-    return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allLinks]);
+  // Reminder watcher — surfaces toast + (if permitted) browser notification
+  // for any due reminder, persists dismissed reminders to localStorage so
+  // they don't keep re-firing across reloads, and powers the bell-icon
+  // badge in the header via the returned `due` list. Mounted exactly once
+  // here so multiple bell instances share the same notified set.
+  const {
+    due: dueReminders,
+    dismiss: dismissReminder,
+    dismissAll: dismissAllReminders,
+  } = useDueReminders(allLinks);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -839,7 +832,18 @@ function LibraryPage() {
     <TooltipProvider delayDuration={300}>
       <div className="min-h-screen bg-background text-foreground">
         {/* Mobile header — visible below lg */}
-        <MobileHeader email={user?.email} onOpenSidebar={() => setMobileSidebarOpen(true)} />
+        <MobileHeader
+          email={user?.email}
+          onOpenSidebar={() => setMobileSidebarOpen(true)}
+          bell={
+            <NotificationBell
+              due={dueReminders}
+              dismiss={dismissReminder}
+              dismissAll={dismissAllReminders}
+              onOpenLink={(id) => handleSelectLink(id)}
+            />
+          }
+        />
 
         {/* Mobile sidebar drawer — only used below lg */}
         <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
@@ -990,6 +994,13 @@ function LibraryPage() {
             <div
               className={`mt-auto p-3 border-t border-border/50 ${collapsed ? "flex flex-col items-center gap-1" : "flex items-center gap-1"}`}
             >
+              <NotificationBell
+                due={dueReminders}
+                dismiss={dismissReminder}
+                dismissAll={dismissAllReminders}
+                onOpenLink={(id) => handleSelectLink(id)}
+                variant="sidebar"
+              />
               <ThemeToggle />
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1143,31 +1154,7 @@ function LibraryPage() {
                           variant="ghost"
                           className="h-7 font-mono text-xs text-destructive"
                           disabled={!hasSelection}
-                          onClick={() => {
-                            const ids = Array.from(selectedIds);
-                            if (
-                              !window.confirm(
-                                `Permanently delete ${ids.length} link${ids.length === 1 ? "" : "s"}? This cannot be undone.`,
-                              )
-                            ) {
-                              return;
-                            }
-                            const idSet = new Set(ids);
-                            const prev = optimisticUpdate((links) =>
-                              links.filter((l) => !idSet.has(l.id)),
-                            );
-                            toast.success(
-                              `Deleted ${ids.length} link${ids.length === 1 ? "" : "s"} forever`,
-                            );
-                            setSelectedIds(new Set());
-                            setSelectMode(false);
-                            permanentlyDeleteMany(ids)
-                              .then(() => qc.invalidateQueries({ queryKey: ["links"] }))
-                              .catch((e: Error) => {
-                                qc.setQueryData(["links"], prev);
-                                toast.error(e.message);
-                              });
-                          }}
+                          onClick={() => setBulkPermanentDeleteOpen(true)}
                         >
                           <Trash2 className="h-3 w-3 mr-1" />
                           Delete forever
@@ -1417,6 +1404,43 @@ function LibraryPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <AlertDialog open={bulkPermanentDeleteOpen} onOpenChange={setBulkPermanentDeleteOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="font-mono">
+                Delete {selectedIds.size} link{selectedIds.size === 1 ? "" : "s"} forever?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                This permanently removes the selected link
+                {selectedIds.size === 1 ? "" : "s"} from your library. This action cannot be undone
+                &mdash; they will not appear in the Recycle Bin.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="font-mono text-xs">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="font-mono text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => {
+                  const ids = Array.from(selectedIds);
+                  const idSet = new Set(ids);
+                  const prev = optimisticUpdate((links) => links.filter((l) => !idSet.has(l.id)));
+                  toast.success(`Deleted ${ids.length} link${ids.length === 1 ? "" : "s"} forever`);
+                  setSelectedIds(new Set());
+                  setSelectMode(false);
+                  setBulkPermanentDeleteOpen(false);
+                  permanentlyDeleteMany(ids)
+                    .then(() => qc.invalidateQueries({ queryKey: ["links"] }))
+                    .catch((e: Error) => {
+                      qc.setQueryData(["links"], prev);
+                      toast.error(e.message);
+                    });
+                }}
+              >
+                Delete forever
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
         <ImportDialog open={importOpen} onOpenChange={setImportOpen} onImport={handleAdd} />
         <SmartSearchDialog
@@ -1456,7 +1480,17 @@ function LibraryPage() {
   );
 }
 
-function MobileHeader({ email, onOpenSidebar }: { email?: string; onOpenSidebar: () => void }) {
+function MobileHeader({
+  email,
+  onOpenSidebar,
+  bell,
+}: {
+  email?: string;
+  onOpenSidebar: () => void;
+  // Slot for the notification bell so the LibraryPage can wire it to the
+  // shared reminder watcher without leaking that wiring into the header.
+  bell?: React.ReactNode;
+}) {
   return (
     <header className="lg:hidden glass sticky top-0 z-30 border-b border-border/50 px-3 flex items-center gap-2 h-14">
       <Button
@@ -1477,6 +1511,7 @@ function MobileHeader({ email, onOpenSidebar }: { email?: string; onOpenSidebar:
           </span>
         )}
       </div>
+      {bell}
       <LanguageToggle variant="icon" />
       <ThemeToggle />
     </header>
@@ -2212,7 +2247,7 @@ function LinkCard({
   );
 }
 
-function LinkPreviewCard({ link, lang }: { link: LinkRow; lang: Lang }) {
+function LinkPreviewCard({ link, lang }: { link: LinkRow; lang: LangPref }) {
   const title = pickTitle(link, lang);
   const summary = pickSummary(link, lang);
   const domain = link.domain || getDomain(link.url);
@@ -2338,16 +2373,6 @@ const BROAD_DOMAINS = new Set([
   "github.com",
 ]);
 
-// Reminder presets shown in the detail panel. The custom option opens a
-// native datetime-local input so users can pick anything specific.
-const REMINDER_PRESETS: { label: string; minutes: number }[] = [
-  { label: "20 min", minutes: 20 },
-  { label: "1 hour", minutes: 60 },
-  { label: "3 hours", minutes: 60 * 3 },
-  { label: "Tomorrow", minutes: 60 * 24 },
-  { label: "Next week", minutes: 60 * 24 * 7 },
-];
-
 function StarReadReminderRow({
   link,
   onSetPriority,
@@ -2359,8 +2384,10 @@ function StarReadReminderRow({
   onSetRead: (id: string, read: boolean) => void;
   onSetReminder: (id: string, at: string | null) => void;
 }) {
-  const [customOpen, setCustomOpen] = useState(false);
-  const [customAt, setCustomAt] = useState<string>("");
+  // Reminder picker lives in a dedicated dialog so the controls (presets,
+  // datetime input, clear) get room to breathe and don't fight the detail
+  // panel's narrow column on mobile.
+  const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
 
   const priority = (link.priority ?? 0) as 0 | 1 | 2 | 3;
   const isRead = !!link.read_at;
@@ -2373,11 +2400,7 @@ function StarReadReminderRow({
         minute: "2-digit",
       })
     : null;
-
-  const pickPreset = (minutes: number) => {
-    const at = new Date(Date.now() + minutes * 60_000).toISOString();
-    onSetReminder(link.id, at);
-  };
+  const reminderTitle = link.title || link.title_bn || link.domain || link.url;
 
   return (
     <div className="space-y-2 rounded-lg border border-border/50 bg-card/50 p-3">
@@ -2428,78 +2451,44 @@ function StarReadReminderRow({
           )}
         </Button>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 font-mono text-xs"
-              title={reminderLabel ? `Reminder: ${reminderLabel}` : "Set a reminder"}
-            >
-              {hasReminder ? (
-                <>
-                  <Bell className="h-3.5 w-3.5 mr-1.5 text-primary" />
-                  {reminderLabel}
-                </>
-              ) : (
-                <>
-                  <Bell className="h-3.5 w-3.5 mr-1.5" /> Remind me
-                </>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="font-mono text-xs">
-            {REMINDER_PRESETS.map((p) => (
-              <DropdownMenuItem key={p.label} onClick={() => pickPreset(p.minutes)}>
-                In {p.label}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault();
-                setCustomOpen((v) => !v);
-              }}
-            >
-              Custom…
-            </DropdownMenuItem>
-            {hasReminder && (
-              <DropdownMenuItem
-                onClick={() => onSetReminder(link.id, null)}
-                className="text-destructive"
-              >
-                <BellOff className="h-3.5 w-3.5 mr-1.5" /> Clear reminder
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {customOpen && (
-        <div className="flex items-center gap-2">
-          <Input
-            type="datetime-local"
-            value={customAt}
-            onChange={(e) => setCustomAt(e.target.value)}
-            className="h-7 text-xs font-mono"
-          />
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 font-mono text-xs"
+          title={reminderLabel ? `Reminder: ${reminderLabel}` : "Set a reminder"}
+          onClick={() => setReminderDialogOpen(true)}
+        >
+          {hasReminder ? (
+            <>
+              <Bell className="h-3.5 w-3.5 mr-1.5 text-primary" />
+              <span className="truncate max-w-[160px]">{reminderLabel}</span>
+            </>
+          ) : (
+            <>
+              <Bell className="h-3.5 w-3.5 mr-1.5" /> Remind me
+            </>
+          )}
+        </Button>
+        {hasReminder && (
           <Button
             size="sm"
-            variant="outline"
-            className="h-7 font-mono text-xs"
-            disabled={!customAt}
-            onClick={() => {
-              if (!customAt) return;
-              const at = new Date(customAt);
-              if (Number.isNaN(at.getTime())) return;
-              onSetReminder(link.id, at.toISOString());
-              setCustomOpen(false);
-              setCustomAt("");
-            }}
+            variant="ghost"
+            className="h-7 font-mono text-xs text-destructive hover:bg-destructive/10"
+            onClick={() => onSetReminder(link.id, null)}
+            title="Clear reminder"
           >
-            Save
+            <BellOff className="h-3.5 w-3.5" />
           </Button>
-        </div>
-      )}
+        )}
+      </div>
+
+      <SetReminderDialog
+        open={reminderDialogOpen}
+        onOpenChange={setReminderDialogOpen}
+        linkLabel={reminderTitle}
+        currentAt={link.reminder_at ?? null}
+        onSave={(at) => onSetReminder(link.id, at)}
+      />
     </div>
   );
 }
@@ -2532,15 +2521,20 @@ function DetailPanel({
   const Icon = TYPE_ICON[link.content_type];
   const { lang: globalLang } = useLanguage();
   // Local override lets the user flip the detail panel without changing the
-  // global preference (e.g. quickly cross-check the translation).
-  const [panelLang, setPanelLang] = useState<Lang>(globalLang);
+  // global preference (e.g. quickly cross-check the translation). Resolve
+  // the global preference (which may be `auto`) against the link's source
+  // language so the EN / বাং pill reflects an actual choice on mount.
+  const [panelLang, setPanelLang] = useState<Lang>(resolveLang(globalLang, link.source_lang));
   useEffect(() => {
-    setPanelLang(globalLang);
-  }, [globalLang, link.id]);
+    setPanelLang(resolveLang(globalLang, link.source_lang));
+  }, [globalLang, link.id, link.source_lang]);
   const displayTitle = pickTitle(link, panelLang) || link.url;
   const displaySummary = pickSummary(link, panelLang);
   const hasKeyPoints = Array.isArray(link.key_points) && link.key_points.length > 0;
   const [tagInput, setTagInput] = useState("");
+  // Confirms permanent delete from the detail panel. Soft-delete (move to
+  // Recycle Bin) is reversible and doesn't need a confirmation.
+  const [permanentDeleteOpen, setPermanentDeleteOpen] = useState(false);
   // Similarity: rank by shared-tag count first. A same-domain match adds a
   // small bonus only for narrow/niche domains; on broad platforms (facebook,
   // x.com, youtube…) every saved link would otherwise look "similar".
@@ -2751,19 +2745,43 @@ function DetailPanel({
           variant="outline"
           className="h-8 font-mono text-xs text-destructive hover:bg-destructive/10"
           onClick={() => {
-            if (
-              isTrashed &&
-              !window.confirm("Delete this link permanently? This cannot be undone.")
-            ) {
-              return;
+            if (isTrashed) {
+              setPermanentDeleteOpen(true);
+            } else {
+              // Soft-delete is reversible from the Recycle Bin, so we apply it
+              // immediately without prompting.
+              onDelete(link.id);
             }
-            onDelete(link.id);
           }}
         >
           <Trash2 className="h-3.5 w-3.5 mr-1.5" />
           {isTrashed ? "Delete forever" : "Delete"}
         </Button>
       </div>
+
+      <AlertDialog open={permanentDeleteOpen} onOpenChange={setPermanentDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-mono">Delete this link forever?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes <span className="font-medium">{displayTitle}</span> from your
+              library. This action cannot be undone &mdash; it will not appear in the Recycle Bin.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-mono text-xs">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="font-mono text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                setPermanentDeleteOpen(false);
+                onDelete(link.id);
+              }}
+            >
+              Delete forever
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div>
         <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-1">

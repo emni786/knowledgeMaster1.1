@@ -4,12 +4,21 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { chatCompletion, getAIConfig } from "@/lib/ai";
 
 const ContentType = z.enum(["article", "video", "repo", "docs", "tool", "thread", "other"]);
+const SourceLang = z.enum(["en", "bn"]);
 
 const Analysis = z.object({
-  title: z.string().min(1).max(200),
-  title_bn: z.string().min(1).max(200),
-  summary: z.string().min(1).max(700),
-  summary_bn: z.string().min(1).max(900),
+  // `source_lang` is the detected language of the page content (en or bn).
+  // The UI defaults to showing the matching field as the canonical version;
+  // the other-language field is treated as an optional translation.
+  source_lang: SourceLang.default("en"),
+  // Either-or by design: when source_lang='bn' the model may leave the
+  // English fields blank, and vice versa. The post-parse step guarantees
+  // the source-language field is populated, then the UI's pickTitle /
+  // pickSummary falls back gracefully if the other side is empty.
+  title: z.string().max(200).optional().default(""),
+  title_bn: z.string().max(200).optional().default(""),
+  summary: z.string().max(700).optional().default(""),
+  summary_bn: z.string().max(900).optional().default(""),
   key_points: z.array(z.string().min(2).max(160)).min(0).max(6).default([]),
   tags: z.array(z.string().min(2).max(40)).min(1).max(6),
   content_type: ContentType,
@@ -41,6 +50,23 @@ function getDomain(u: string): string | null {
     return null;
   }
 }
+// Cheap heuristic: does the string contain a noticeable amount of Bangla
+// (U+0980..U+09FF) script? We use it as a fallback when the AI is offline
+// so we still tag source_lang sensibly.
+function looksBangla(s: string): boolean {
+  if (!s) return false;
+  let bn = 0;
+  let ascii = 0;
+  for (const ch of s) {
+    const code = ch.codePointAt(0)!;
+    if (code >= 0x0980 && code <= 0x09ff) bn++;
+    else if (code >= 0x20 && code <= 0x7e) ascii++;
+  }
+  // Treat anything with 8+ Bangla characters AND Bangla outweighing latin
+  // by at least a 1:3 ratio as Bangla content.
+  return bn >= 8 && bn * 3 >= ascii;
+}
+
 function detectType(u: string, html?: string): Analysis["content_type"] {
   const d = (getDomain(u) ?? "").toLowerCase();
   if (/youtube\.com|youtu\.be|vimeo\.com|loom\.com/.test(d)) return "video";
@@ -318,18 +344,19 @@ async function aiAnalyze(input: {
   if (!(await getAIConfig())) return null;
 
   const system =
-    "You are a meticulous web-link analyzer producing bilingual (English + Bangla) metadata for a personal knowledge library. " +
+    "You are a meticulous web-link analyzer producing metadata for a personal knowledge library in the link's own language (English OR Bangla). " +
     "Reply with STRICT JSON ONLY, no prose, matching exactly this schema:\n" +
-    `{"title":"<concise English title>","title_bn":"<Bangla title>","summary":"<English summary, 3-5 sentences>","summary_bn":"<Bangla summary, 3-5 sentences>","key_points":["<short English bullet>","3 to 5 items"],"tags":["kebab-case","3 to 6"],"content_type":"article|video|repo|docs|tool|thread|other"}.\n` +
+    `{"source_lang":"en|bn","title":"<English title or empty string>","title_bn":"<Bangla title or empty string>","summary":"<English summary or empty string>","summary_bn":"<Bangla summary or empty string>","key_points":["<short English bullet>","3 to 5 items"],"tags":["kebab-case","3 to 6"],"content_type":"article|video|repo|docs|tool|thread|other"}.\n` +
     "Rules:\n" +
-    "- title: concise canonical English title, <= 140 chars, no clickbait, no site name suffix.\n" +
-    "- title_bn: natural Bangla title in Bangla script (বাংলা). Keep technical / proper nouns in English (e.g. React, TypeScript, GPU, GitHub, OpenAI, API, LLM, machine learning, startup). Do NOT transliterate them. <= 160 chars.\n" +
-    "- summary: 3 to 5 sentence English paragraph. Cover: WHAT it is, the KEY substance / main idea, and WHO it's useful for or WHY it matters. Be concrete, specific, neutral. No marketing fluff, no 'this article discusses' filler. 280-600 chars target.\n" +
-    "- summary_bn: same content as summary but in natural Bangla (Bangla script). MUST preserve all technical / proper-noun terms in English exactly (React, API, framework, dataset, etc.). Read like a knowledgeable Bangla speaker explaining it to a friend. 3 to 5 sentences. 320-800 chars target.\n" +
-    "- key_points: 3 to 5 short English bullet highlights (each <= 140 chars). Concrete facts / takeaways extracted from the content. No duplication of the summary's opening sentence.\n" +
-    "- tags: 3 to 6 conceptual, reusable lowercase kebab-case slugs (e.g. 'machine-learning','rust-lang','startup-funding'). No '#'.\n" +
+    "- source_lang: detect the natural language of the page CONTENT (not the URL). Use 'bn' if the body / OG description is primarily Bangla script; otherwise 'en'. Mixed content with a clear majority follows the majority.\n" +
+    "- DO NOT translate. Only fill the *_bn fields if source_lang='bn'. Only fill the English title/summary if source_lang='en'. Leave the other side as an empty string (\"\"). Generating a redundant translation is wasted work and the UI handles single-language rows gracefully.\n" +
+    "- title (en) / title_bn (bn): concise canonical title in the source language. <= 160 chars. No clickbait, no site name suffix.\n" +
+    "- summary (en) / summary_bn (bn): 3 to 5 sentence paragraph in the source language. Cover: WHAT it is, the KEY substance / main idea, and WHO it's useful for or WHY it matters. Be concrete, specific, neutral. No marketing fluff, no 'this article discusses' filler. 280-700 chars target.\n" +
+    "- For Bangla content keep technical / proper nouns in English exactly (React, API, GitHub, OpenAI, LLM, machine learning, framework, dataset, etc.). Do NOT transliterate them.\n" +
+    "- key_points: 3 to 5 short English bullet highlights regardless of source_lang (each <= 140 chars). Concrete facts / takeaways extracted from the content. Always English so the global tag / search index stays uniform. No duplication of the summary's opening sentence.\n" +
+    "- tags: 3 to 6 conceptual, reusable lowercase kebab-case slugs (e.g. 'machine-learning','rust-lang','startup-funding'). No '#'. Always English.\n" +
     "- content_type: best single match from the enum.\n" +
-    "If the page content is thin (e.g. only a title), still produce useful bilingual output based on the URL, domain, and title — never refuse, never leave fields empty.";
+    "If the page content is thin (e.g. only a title), still produce useful output in the source language based on the URL, domain, and title — never refuse.";
 
   const user = JSON.stringify({
     url: input.url,
@@ -352,6 +379,24 @@ async function aiAnalyze(input: {
       signal: ctrl.signal,
     });
     const parsed = Analysis.parse(JSON.parse(raw));
+    // Normalise the per-language fields: trim and treat blank as omitted.
+    // The DB stores empty strings as nullable text; we let the upstream
+    // writer convert blanks to null where appropriate.
+    parsed.title = (parsed.title ?? "").trim();
+    parsed.title_bn = (parsed.title_bn ?? "").trim();
+    parsed.summary = (parsed.summary ?? "").trim();
+    parsed.summary_bn = (parsed.summary_bn ?? "").trim();
+    // Guarantee at least the source-language fields are populated, in case
+    // the model returned an empty primary title/summary by mistake.
+    if (parsed.source_lang === "bn") {
+      if (!parsed.title_bn)
+        parsed.title_bn = parsed.title || input.meta.title || input.domain || input.url;
+      if (!parsed.summary_bn) parsed.summary_bn = parsed.summary || input.meta.description || "";
+    } else {
+      if (!parsed.title)
+        parsed.title = parsed.title_bn || input.meta.title || input.domain || input.url;
+      if (!parsed.summary) parsed.summary = parsed.summary_bn || input.meta.description || "";
+    }
     parsed.tags = Array.from(
       new Set(
         parsed.tags
@@ -387,13 +432,27 @@ async function analyzeOne(
   const ai = await aiAnalyze({ url, domain, meta, bodyText });
   if (ai) return { analysis: ai, domain, html_present: !!html };
 
-  // Fallback: deterministic but useful. Bangla fields mirror English when
-  // the AI is unavailable; UI displays them transparently.
+  // Fallback: deterministic but useful when the AI is unavailable. We only
+  // populate the source language; the other side stays blank so the UI's
+  // pickTitle / pickSummary fall back transparently and the user isn't shown
+  // a duplicate "English == Bangla" entry.
+  const fallbackSourceLang: "en" | "bn" = looksBangla(
+    `${meta.title} ${meta.description} ${bodyText.slice(0, 1200)}`,
+  )
+    ? "bn"
+    : "en";
+  const fallbackTitle = meta.title || domain || url;
+  const fallbackSummary =
+    meta.description ||
+    (fallbackSourceLang === "bn"
+      ? `${domain ?? "web"} থেকে save করা link।`
+      : `Saved link from ${domain ?? "the web"}.`);
   const fallback: Analysis = {
-    title: meta.title || domain || url,
-    title_bn: meta.title || domain || url,
-    summary: meta.description || `Saved link from ${domain ?? "the web"}.`,
-    summary_bn: meta.description || `${domain ?? "web"} থেকে save করা link।`,
+    source_lang: fallbackSourceLang,
+    title: fallbackSourceLang === "en" ? fallbackTitle : "",
+    title_bn: fallbackSourceLang === "bn" ? fallbackTitle : "",
+    summary: fallbackSourceLang === "en" ? fallbackSummary : "",
+    summary_bn: fallbackSourceLang === "bn" ? fallbackSummary : "",
     key_points: [],
     tags: domain
       ? [
@@ -467,13 +526,24 @@ export const analyzeLinks = createServerFn({ method: "POST" })
       (rows ?? []).map(async (row) => {
         try {
           const { analysis } = await analyzeOne(row.url as string);
+          const displayTitle =
+            analysis.source_lang === "bn"
+              ? analysis.title_bn || analysis.title
+              : analysis.title || analysis.title_bn;
+          const displaySummary =
+            analysis.source_lang === "bn"
+              ? analysis.summary_bn || analysis.summary
+              : analysis.summary || analysis.summary_bn;
           const upd = supabase
             .from("links")
             .update({
-              title: analysis.title,
-              title_bn: analysis.title_bn,
-              summary: analysis.summary,
-              summary_bn: analysis.summary_bn,
+              // Store blanks as NULL so the UI's `?.trim() || fallback`
+              // chain falls through cleanly to whichever side has content.
+              title: analysis.title || null,
+              title_bn: analysis.title_bn || null,
+              summary: analysis.summary || null,
+              summary_bn: analysis.summary_bn || null,
+              source_lang: analysis.source_lang,
               key_points: analysis.key_points,
               tags: analysis.tags,
               content_type: analysis.content_type,
@@ -481,14 +551,14 @@ export const analyzeLinks = createServerFn({ method: "POST" })
               error_message: null,
               fetched_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
-            })
+            } as never)
             .eq("id", row.id);
           if (dataNeedsScoping) upd.eq("owner_id", userId);
           await upd;
           return {
             url: row.url as string,
-            title: analysis.title,
-            summary: analysis.summary,
+            title: displayTitle,
+            summary: displaySummary,
             ok: true,
           };
         } catch (e) {
@@ -587,16 +657,25 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
       (inserted ?? []).map(async (row) => {
         try {
           const { analysis } = await analyzeOne(row.url);
+          const displayTitle =
+            analysis.source_lang === "bn"
+              ? analysis.title_bn || analysis.title
+              : analysis.title || analysis.title_bn;
+          const displaySummary =
+            analysis.source_lang === "bn"
+              ? analysis.summary_bn || analysis.summary
+              : analysis.summary || analysis.summary_bn;
           // When admin uses PERSONAL (service-role) we MUST scope by owner_id
           // because RLS is bypassed. For non-admin on PUBLIC, RLS already
           // scopes by auth.uid() but the extra filter is harmless.
           const upd = supabase
             .from("links")
             .update({
-              title: analysis.title,
-              title_bn: analysis.title_bn,
-              summary: analysis.summary,
-              summary_bn: analysis.summary_bn,
+              title: analysis.title || null,
+              title_bn: analysis.title_bn || null,
+              summary: analysis.summary || null,
+              summary_bn: analysis.summary_bn || null,
+              source_lang: analysis.source_lang,
               key_points: analysis.key_points,
               tags: analysis.tags,
               content_type: analysis.content_type,
@@ -604,11 +683,11 @@ export const analyzeAndSaveLinks = createServerFn({ method: "POST" })
               error_message: null,
               fetched_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
-            })
+            } as never)
             .eq("id", row.id);
           if (dataNeedsScoping) upd.eq("owner_id", userId);
           await upd;
-          return { url: row.url, title: analysis.title, summary: analysis.summary, ok: true };
+          return { url: row.url, title: displayTitle, summary: displaySummary, ok: true };
         } catch (e) {
           const upd = supabase
             .from("links")
@@ -851,10 +930,11 @@ export const reanalyzeLink = createServerFn({ method: "POST" })
       const readyUpd = supabase
         .from("links")
         .update({
-          title: analysis.title,
-          title_bn: analysis.title_bn,
-          summary: analysis.summary,
-          summary_bn: analysis.summary_bn,
+          title: analysis.title || null,
+          title_bn: analysis.title_bn || null,
+          summary: analysis.summary || null,
+          summary_bn: analysis.summary_bn || null,
+          source_lang: analysis.source_lang,
           key_points: analysis.key_points,
           tags: analysis.tags,
           content_type: analysis.content_type,
@@ -862,7 +942,7 @@ export const reanalyzeLink = createServerFn({ method: "POST" })
           error_message: null,
           fetched_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        })
+        } as never)
         .eq("id", row.id);
       if (dataNeedsScoping) readyUpd.eq("owner_id", userId);
       await readyUpd;
