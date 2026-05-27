@@ -1,7 +1,16 @@
 import { Languages } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { LANG_NAME, useLanguage, type Lang } from "@/lib/i18n";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { LANG_NAME, useLanguage, type LangPref } from "@/lib/i18n";
 
 interface LanguageToggleProps {
   /** Visual variant: pill (default) or icon-only for compact toolbars. */
@@ -9,30 +18,49 @@ interface LanguageToggleProps {
   className?: string;
 }
 
+const ORDER: LangPref[] = ["auto", "en", "bn"];
+
 /**
- * Global EN / বাং switcher. Persists to localStorage via `useLanguage`
- * and broadcasts to every other component that uses the hook.
+ * Global Auto / EN / বাং switcher. Persists to localStorage via `useLanguage`
+ * and broadcasts to every other component that uses the hook. `auto` (the
+ * default) means each link is shown in its detected source language; `en` and
+ * `bn` force the entire app to that language.
  */
 export function LanguageToggle({ variant = "pill", className }: LanguageToggleProps) {
   const { lang, setLang } = useLanguage();
-  const next: Lang = lang === "en" ? "bn" : "en";
 
   if (variant === "icon") {
     return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`h-9 w-9 hover:bg-primary/10 hover:text-primary ${className ?? ""}`}
-            onClick={() => setLang(next)}
-            aria-label={`Switch to ${LANG_NAME[next]}`}
-          >
-            <Languages className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Switch to {LANG_NAME[next]}</TooltipContent>
-      </Tooltip>
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-9 w-9 hover:bg-primary/10 hover:text-primary ${className ?? ""}`}
+                aria-label={`Language: ${LANG_NAME[lang]}`}
+              >
+                <Languages className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>Language</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end" className="font-mono text-xs">
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            Display language
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuRadioGroup value={lang} onValueChange={(v) => setLang(v as LangPref)}>
+            {ORDER.map((opt) => (
+              <DropdownMenuRadioItem key={opt} value={opt}>
+                {LANG_NAME[opt]}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
     );
   }
 
@@ -42,30 +70,21 @@ export function LanguageToggle({ variant = "pill", className }: LanguageTogglePr
       role="group"
       aria-label="Language"
     >
-      <button
-        type="button"
-        onClick={() => setLang("en")}
-        aria-pressed={lang === "en"}
-        className={`px-2.5 py-1 rounded-full transition ${
-          lang === "en"
-            ? "bg-primary text-primary-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground"
-        }`}
-      >
-        EN
-      </button>
-      <button
-        type="button"
-        onClick={() => setLang("bn")}
-        aria-pressed={lang === "bn"}
-        className={`px-2.5 py-1 rounded-full transition ${
-          lang === "bn"
-            ? "bg-primary text-primary-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground"
-        }`}
-      >
-        বাং
-      </button>
+      {ORDER.map((opt) => (
+        <button
+          key={opt}
+          type="button"
+          onClick={() => setLang(opt)}
+          aria-pressed={lang === opt}
+          className={`px-2.5 py-1 rounded-full transition ${
+            lang === opt
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {opt === "auto" ? "Auto" : opt === "en" ? "EN" : "বাং"}
+        </button>
+      ))}
     </div>
   );
 }
