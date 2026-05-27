@@ -2704,6 +2704,25 @@ function DetailPanel({
   const displayTitle = pickTitle(link, panelLang) || link.url;
   const displaySummary = pickSummary(link, panelLang);
   const hasKeyPoints = Array.isArray(link.key_points) && link.key_points.length > 0;
+  // We only show the per-link EN / বাং toggle when the link actually has
+  // meaningful content in both languages. With auto-translate removed, most
+  // links only ever populate the source language, and a button that does
+  // nothing on tap is more confusing than useful.
+  const enText = `${link.title?.trim() ?? ""}\n${link.summary?.trim() ?? ""}`.trim();
+  const bnText = `${link.title_bn?.trim() ?? ""}\n${link.summary_bn?.trim() ?? ""}`.trim();
+  const hasBothLangs = enText.length > 0 && bnText.length > 0 && enText !== bnText;
+  // Hide the SUMMARY section when it is essentially the same string as the
+  // title (common on Facebook / X posts where the analyzer fills both with
+  // the same body text). Compared on the normalized first 200 chars so we
+  // catch the "title is the full post" case without false positives on
+  // genuinely different long summaries.
+  const titleHead = displayTitle.replace(/\s+/g, " ").trim().slice(0, 200).toLowerCase();
+  const summaryHead = displaySummary?.replace(/\s+/g, " ").trim().slice(0, 200).toLowerCase() ?? "";
+  const summaryIsRedundant =
+    summaryHead.length > 0 &&
+    (titleHead === summaryHead ||
+      titleHead.startsWith(summaryHead) ||
+      summaryHead.startsWith(titleHead));
   const [tagInput, setTagInput] = useState("");
   // Confirms permanent delete from the detail panel. Soft-delete (move to
   // Recycle Bin) is reversible and doesn't need a confirmation.
@@ -2755,7 +2774,13 @@ function DetailPanel({
         <div className="flex items-start gap-3">
           <img src={faviconFor(link.url)} alt="" className="h-8 w-8 rounded" />
           <div className="flex-1 min-w-0">
-            <h2 className="font-semibold text-base leading-tight">{displayTitle}</h2>
+            {/* line-clamp keeps long Facebook / X bodies (which the analyzer
+                sometimes uses as the title) from dominating the panel. The
+                full text is still available in the title attribute and below
+                in the Summary section when it differs. */}
+            <h2 className="font-semibold text-base leading-tight line-clamp-3" title={displayTitle}>
+              {displayTitle}
+            </h2>
             <a
               href={link.url}
               target="_blank"
@@ -2786,32 +2811,34 @@ function DetailPanel({
           }
         />
         {link.pinned && <Pill icon={Pin} label="pinned" tone="primary" />}
-        <div className="ml-auto inline-flex items-center rounded-full border border-border/60 bg-background p-0.5 text-[10px] font-mono">
-          <button
-            type="button"
-            onClick={() => setPanelLang("en")}
-            aria-pressed={panelLang === "en"}
-            className={`px-2 py-0.5 rounded-full transition ${
-              panelLang === "en"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            EN
-          </button>
-          <button
-            type="button"
-            onClick={() => setPanelLang("bn")}
-            aria-pressed={panelLang === "bn"}
-            className={`px-2 py-0.5 rounded-full transition ${
-              panelLang === "bn"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            বাং
-          </button>
-        </div>
+        {hasBothLangs && (
+          <div className="ml-auto inline-flex items-center rounded-full border border-border/60 bg-background p-0.5 text-[10px] font-mono">
+            <button
+              type="button"
+              onClick={() => setPanelLang("en")}
+              aria-pressed={panelLang === "en"}
+              className={`px-2 py-0.5 rounded-full transition ${
+                panelLang === "en"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              onClick={() => setPanelLang("bn")}
+              aria-pressed={panelLang === "bn"}
+              className={`px-2 py-0.5 rounded-full transition ${
+                panelLang === "bn"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              বাং
+            </button>
+          </div>
+        )}
       </div>
 
       {!isTrashed && link.status === "ready" && (
@@ -2823,7 +2850,7 @@ function DetailPanel({
         />
       )}
 
-      {displaySummary && (
+      {displaySummary && !summaryIsRedundant && (
         <div>
           <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
             Summary
