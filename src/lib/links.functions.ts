@@ -72,17 +72,70 @@ function looksBangla(s: string): boolean {
   return bn >= 8 && bn * 3 >= ascii;
 }
 
+// URL-only hint for social platforms whose share URLs don't reveal whether
+// the content is a video or a text post. Returns null when the URL does not
+// give a definitive signal — caller should fall back to other heuristics.
+function socialUrlHint(u: string): "video" | "article" | null {
+  const d = (getDomain(u) ?? "").toLowerCase();
+  let path = "";
+  try {
+    path = new URL(u).pathname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (/facebook\.com|fb\.com|fb\.watch/.test(d)) {
+    if (/\/(reel|reels|video|videos|watch)\//.test(path)) return "video";
+    if (/^\/share\/r\//.test(path)) return "video";
+    if (/^\/share\/v\//.test(path)) return "video";
+    // story.php, /posts/, /share/<id>/, /<user>/posts/, /story/ — text posts
+    if (/\/(posts|story|story\.php|notes)\b/.test(path)) return "article";
+    if (/^\/share\/[^/]+\/?$/.test(path)) return "article";
+    return "article";
+  }
+  if (/instagram\.com/.test(d)) {
+    if (/\/(reel|reels|tv)\//.test(path)) return "video";
+    if (/\/p\//.test(path)) return "article";
+    return null;
+  }
+  if (/linkedin\.com/.test(d)) {
+    if (/\/(video|videos)\//.test(path)) return "video";
+    if (/\/(posts|pulse|feed)\//.test(path)) return "article";
+    return null;
+  }
+  return null;
+}
+
 function detectType(u: string, html?: string): Analysis["content_type"] {
   const d = (getDomain(u) ?? "").toLowerCase();
   if (/youtube\.com|youtu\.be|vimeo\.com|loom\.com/.test(d)) return "video";
   if (/github\.com|gitlab\.com|bitbucket\.org/.test(d)) return "repo";
   if (/docs?\.|developer\.|\.dev\b|readthedocs/.test(d)) return "docs";
   if (/twitter\.com|x\.com|threads\.net|reddit\.com|news\.ycombinator/.test(d)) return "thread";
+  const social = socialUrlHint(u);
+  if (social) return social;
   if (html && /<meta[^>]+property=["']og:type["'][^>]+content=["']video/i.test(html))
     return "video";
   if (html && /<meta[^>]+property=["']og:type["'][^>]+content=["']article/i.test(html))
     return "article";
   return "article";
+}
+
+// When the AI returns a content_type that contradicts a strong URL-based
+// signal (e.g. AI says "video" for a Facebook /share/<id>/ text post URL),
+// override the AI's guess. The URL path is a more reliable signal than the
+// AI's pattern-matching when the page body is unavailable (login walls,
+// bot blocks).
+function reconcileContentType(
+  u: string,
+  aiType: Analysis["content_type"],
+): Analysis["content_type"] {
+  const hint = socialUrlHint(u);
+  if (!hint) return aiType;
+  // If URL strongly says article (text post) but AI guessed video, override.
+  if (hint === "article" && aiType === "video") return "article";
+  // If URL strongly says video (reel/watch) but AI guessed article, override.
+  if (hint === "video" && aiType === "article") return "video";
+  return aiType;
 }
 
 // Robust meta extractor that handles either attribute order
@@ -361,7 +414,7 @@ async function aiAnalyze(input: {
     "- In any Bangla output keep technical / proper nouns in English exactly (React, API, GitHub, OpenAI, LLM, machine learning, framework, dataset, etc.). Do NOT transliterate them.\n" +
     "- key_points: 3 to 5 short English bullet highlights regardless of source_lang (each <= 140 chars). Concrete facts / takeaways extracted from the content. Always English so the global tag / search index stays uniform. No duplication of the summary's opening sentence.\n" +
     "- tags: 3 to 6 conceptual, reusable lowercase kebab-case slugs (e.g. 'machine-learning','rust-lang','startup-funding'). No '#'. Always English.\n" +
-    "- content_type: best single match from the enum.\n" +
+    "- content_type: best single match from the enum. Be careful on social URLs (Facebook, Instagram, LinkedIn): only return 'video' if you have a clear signal it is a video (URL path contains /reel/ /reels/ /video/ /watch/ /share/r/ /share/v/, or og:type contains 'video'). Generic Facebook share URLs (/share/<id>/, /posts/, /story.php) and Instagram /p/ posts are text posts — return 'article', NOT 'video'. When in doubt for a text-like social post, default to 'article'.\n" +
     "If the page content is thin (e.g. only a title), still produce useful output (in both languages when source_lang='en') based on the URL, domain, and title — never refuse.";
 
   const user = JSON.stringify({
@@ -448,7 +501,13 @@ async function analyzeOne(
   const bodyText = html ? stripHtml(html).slice(0, 6000) : "";
 
   const ai = await aiAnalyze({ url, domain, meta, bodyText });
-  if (ai) return { analysis: ai, domain, html_present: !!html };
+  if (ai) {
+    const reconciled: Analysis = {
+      ...ai,
+      content_type: reconcileContentType(url, ai.content_type),
+    };
+    return { analysis: reconciled, domain, html_present: !!html };
+  }
 
   // Fallback: deterministic but useful when the AI is unavailable. We only
   // populate the source language; the other side stays blank so the UI's
