@@ -2918,17 +2918,32 @@ function DetailPanel({
           />
           {link.pinned ? "Unpin" : "Pin"}
         </Button>
-        {link.status !== "ready" && !isTrashed && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 font-mono text-xs"
-            onClick={() => onRetry(link.id)}
-          >
-            <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-            Retry
-          </Button>
-        )}
+        {!isTrashed &&
+          (() => {
+            // Show a contextual analyze button on the detail panel:
+            //   * pending / failed                      -> "Retry"
+            //   * ready + English source missing Bangla -> "Translate to বাং"
+            //     (re-analyze fills in title_bn / summary_bn under the new prompt)
+            //   * ready otherwise                       -> generic "Re-analyze"
+            const isReady = link.status === "ready";
+            const needsBangla =
+              isReady &&
+              link.source_lang !== "bn" &&
+              !(link.title_bn ?? "").trim() &&
+              !(link.summary_bn ?? "").trim();
+            const label = isReady ? (needsBangla ? "Translate to বাং" : "Re-analyze") : "Retry";
+            return (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 font-mono text-xs"
+                onClick={() => onRetry(link.id)}
+              >
+                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                {label}
+              </Button>
+            );
+          })()}
         {isTrashed && onRestore && (
           <Button
             size="sm"

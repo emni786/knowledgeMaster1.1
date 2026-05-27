@@ -11,10 +11,15 @@ const Analysis = z.object({
   // The UI defaults to showing the matching field as the canonical version;
   // the other-language field is treated as an optional translation.
   source_lang: SourceLang.default("en"),
-  // Either-or by design: when source_lang='bn' the model may leave the
-  // English fields blank, and vice versa. The post-parse step guarantees
-  // the source-language field is populated, then the UI's pickTitle /
-  // pickSummary falls back gracefully if the other side is empty.
+  // Bilingual rules:
+  //   * source_lang='en' : both English (canonical) AND Bangla (translation)
+  //     fields are produced, so the user can flip the UI to বাং and read
+  //     the same link in Bangla.
+  //   * source_lang='bn' : only the Bangla fields are produced; the English
+  //     side stays blank (no English translation of Bangla originals).
+  // Post-parse guarantees the source-language field is populated, and the
+  // UI's pickTitle / pickSummary falls back gracefully if the translation
+  // is missing (e.g. legacy rows saved before this rule existed).
   title: z.string().max(200).optional().default(""),
   title_bn: z.string().max(200).optional().default(""),
   summary: z.string().max(700).optional().default(""),
@@ -344,19 +349,20 @@ async function aiAnalyze(input: {
   if (!(await getAIConfig())) return null;
 
   const system =
-    "You are a meticulous web-link analyzer producing metadata for a personal knowledge library in the link's own language (English OR Bangla). " +
+    "You are a meticulous web-link analyzer producing metadata for a personal knowledge library. The user reads in both English and Bangla. " +
     "Reply with STRICT JSON ONLY, no prose, matching exactly this schema:\n" +
     `{"source_lang":"en|bn","title":"<English title or empty string>","title_bn":"<Bangla title or empty string>","summary":"<English summary or empty string>","summary_bn":"<Bangla summary or empty string>","key_points":["<short English bullet>","3 to 5 items"],"tags":["kebab-case","3 to 6"],"content_type":"article|video|repo|docs|tool|thread|other"}.\n` +
-    "Rules:\n" +
+    "Bilingual rules — read carefully:\n" +
     "- source_lang: detect the natural language of the page CONTENT (not the URL). Use 'bn' if the body / OG description is primarily Bangla script; otherwise 'en'. Mixed content with a clear majority follows the majority.\n" +
-    "- DO NOT translate. Only fill the *_bn fields if source_lang='bn'. Only fill the English title/summary if source_lang='en'. Leave the other side as an empty string (\"\"). Generating a redundant translation is wasted work and the UI handles single-language rows gracefully.\n" +
-    "- title (en) / title_bn (bn): concise canonical title in the source language. <= 160 chars. No clickbait, no site name suffix.\n" +
-    "- summary (en) / summary_bn (bn): 3 to 5 sentence paragraph in the source language. Cover: WHAT it is, the KEY substance / main idea, and WHO it's useful for or WHY it matters. Be concrete, specific, neutral. No marketing fluff, no 'this article discusses' filler. 280-700 chars target.\n" +
-    "- For Bangla content keep technical / proper nouns in English exactly (React, API, GitHub, OpenAI, LLM, machine learning, framework, dataset, etc.). Do NOT transliterate them.\n" +
+    "- If source_lang='en': produce BOTH the English fields (title, summary) AND a faithful Bangla translation in title_bn / summary_bn so the user can flip the UI to বাং and read the same link in Bangla. The Bangla side must mean the same thing as the English side — translate the English title and summary, do NOT write a new piece of content.\n" +
+    "- If source_lang='bn': fill ONLY the Bangla fields (title_bn, summary_bn). Leave the English title and summary as empty strings (\"\"). Do NOT translate Bangla content into English — keep the original Bangla as-is.\n" +
+    "- title (en) / title_bn (bn): concise canonical title. <= 160 chars. No clickbait, no site name suffix.\n" +
+    "- summary (en) / summary_bn (bn): 3 to 5 sentence paragraph. Cover: WHAT it is, the KEY substance / main idea, and WHO it's useful for or WHY it matters. Be concrete, specific, neutral. No marketing fluff, no 'this article discusses' filler. 280-700 chars target. When translating en → bn, preserve length and substance; do not abridge.\n" +
+    "- In any Bangla output keep technical / proper nouns in English exactly (React, API, GitHub, OpenAI, LLM, machine learning, framework, dataset, etc.). Do NOT transliterate them.\n" +
     "- key_points: 3 to 5 short English bullet highlights regardless of source_lang (each <= 140 chars). Concrete facts / takeaways extracted from the content. Always English so the global tag / search index stays uniform. No duplication of the summary's opening sentence.\n" +
     "- tags: 3 to 6 conceptual, reusable lowercase kebab-case slugs (e.g. 'machine-learning','rust-lang','startup-funding'). No '#'. Always English.\n" +
     "- content_type: best single match from the enum.\n" +
-    "If the page content is thin (e.g. only a title), still produce useful output in the source language based on the URL, domain, and title — never refuse.";
+    "If the page content is thin (e.g. only a title), still produce useful output (in both languages when source_lang='en') based on the URL, domain, and title — never refuse.";
 
   const user = JSON.stringify({
     url: input.url,
@@ -387,15 +393,27 @@ async function aiAnalyze(input: {
     parsed.summary = (parsed.summary ?? "").trim();
     parsed.summary_bn = (parsed.summary_bn ?? "").trim();
     // Guarantee at least the source-language fields are populated, in case
-    // the model returned an empty primary title/summary by mistake.
+    // the model returned an empty primary title/summary by mistake. The
+    // *translation* side (title_bn / summary_bn for en sources) is allowed
+    // to stay empty if the model didn't produce one — the UI falls back to
+    // the source-language string via pickTitle / pickSummary.
     if (parsed.source_lang === "bn") {
       if (!parsed.title_bn)
         parsed.title_bn = parsed.title || input.meta.title || input.domain || input.url;
       if (!parsed.summary_bn) parsed.summary_bn = parsed.summary || input.meta.description || "";
+      // We never translate Bangla → English. Drop anything the model may
+      // have produced on the English side so the UI's bilingual toggle
+      // doesn't surface a stale or hallucinated translation.
+      parsed.title = "";
+      parsed.summary = "";
     } else {
       if (!parsed.title)
         parsed.title = parsed.title_bn || input.meta.title || input.domain || input.url;
       if (!parsed.summary) parsed.summary = parsed.summary_bn || input.meta.description || "";
+      // For English sources we *want* the Bangla translation populated, but
+      // if the model skipped it we leave the field blank rather than echo
+      // the English text back — pickTitle / pickSummary will gracefully
+      // fall back to the English source until a re-analyze fills it in.
     }
     parsed.tags = Array.from(
       new Set(
