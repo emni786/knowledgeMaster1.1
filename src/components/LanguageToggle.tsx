@@ -45,12 +45,14 @@ export function LanguageToggle({ variant = "pill", className }: LanguageTogglePr
             onClick={() => setLang(next)}
           >
             <Languages className="h-4 w-4" />
+            {/* A small dot in the top-right corner makes the active state
+                obvious without overflowing the button bounds (so it can't
+                get clipped by surrounding chrome). The dot stays inside the
+                button so it never gets cut off by the header. */}
             <span
-              className={`absolute -bottom-0.5 -right-0.5 rounded-md px-1 font-mono text-[9px] leading-[12px] shadow-sm ${isBangla ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+              className={`pointer-events-none absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full transition-opacity ${isBangla ? "bg-primary opacity-100" : "opacity-0"}`}
               aria-hidden="true"
-            >
-              {isBangla ? "বাং" : "src"}
-            </span>
+            />
           </Button>
         </TooltipTrigger>
         <TooltipContent>{tooltip}</TooltipContent>
